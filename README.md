@@ -45,4 +45,4 @@ By adopting ERC6909, Deft DEX sets itself apart as an advanced platform capable 
 
 ## White-paper
 
-***For more information, consider reading the whitepaper provided in this [link](https://github.com/DeftFinance/deft-dex-contracts/blob/main/assets/DeftDex-Whitepaper.pdf).***
+***For more information, consider reading the whitepaper provided in this [link](https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf).***
