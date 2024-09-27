@@ -1,4 +1,4 @@
-# <img src="https://github.com/DeftFinance/deft-dex-contracts/blob/main/assets/DEFT-Logo.png"  width="28px" height="28px"> Deft Dex
+# <img src="https://github.com/DeftFinance/smart-contracts/blob/main/assets/DEFT-Logo.png"  width="28px" height="28px"> Deft Dex
 
 Deft is a decentralized exchange (DEX) designed to address the significant issue of impermanent loss in uniform liquidity constant product automated market makers (AMMs), a prevalent concern for liquidity providers (LPs) in traditional DEXs. Deft introduces innovative features such as uniform liquidity and an advanced dynamic fee calculation mechanism to mitigate impermanent loss, creating a more secure and profitable environment for LPs. Additionally, Deft ensures a fair and efficient trading experience for liquidity takers (LTs), balancing the needs of all participants. By addressing these critical challenges and leveraging cutting-edge technology, Deft sets a new standard in the decentralized finance (DeFi) space, fostering greater confidence and participation among users.
 The main aim here is to keep the Liquidity Takers (LTs) incentivized as well as protect the Liquidity Providers (LPs) from harsh price changes which will lead to impermanent loss. Considering the previous research and studies, the goal of this research is to reduce and optimize the impermanent loss which is a feature of Constant Product Market Makers (CPMM), rather than completely omitting the impermanent loss or making a profit from it. 
@@ -10,7 +10,7 @@ The core concept of Deft's algorithm is finding the new coordination of the pool
 decides whether to alter the swap fee to protect the LPs reaching for an impermanent loss state. The delta intervals for fee calculations are defined as the impermanent loss plot. 
 These intervals are demonstrated in the figure below:
 
-<img src="https://github.com/DeftFinance/deft-dex-contracts/blob/main/assets/algo-fig.png" width="50%" height="40%"> 
+<img src="https://github.com/DeftFinance/smart-contracts/blob/main/assets/algo-fig.png" width="50%" height="40%"> 
 
 Based on the plot we can define 3 zones:
 1. Safe Zone (**$\large -0.25 < \delta < 0.33$**)
@@ -23,7 +23,7 @@ As the reserves and spot prices drastically change during a swap which pushes th
 Considering this fact, an exponential regression is used that changes the fee from 20 to 50 in the basis point.
 The entire algorithm is also presented in this flowchart:
 
-<img src="https://github.com/DeftFinance/deft-dex-contracts/blob/main/assets/flow.png" width="60%" height="60%"> 
+<img src="https://github.com/DeftFinance/smart-contracts/blob/main/assets/flow.png" width="60%" height="60%"> 
 
 ## ERC6909 Application
 
