@@ -13,7 +13,7 @@ import {TransferHelper} from "./libs/TransferHelper.sol";
 // Contracts, Abstracts
 import {DeftPairManager} from "./DeftPairManager.sol";
 
-contract DeftSwap is DeftPairManager {
+contract DeftDEX is DeftPairManager {
     using Math for uint256;
     using TransferHelper for address;
 
