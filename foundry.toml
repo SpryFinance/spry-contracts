@@ -7,11 +7,11 @@ solc = "0.8.20"
 optimizer = true
 optimizer_runs = 200
 fs_permissions = [{ access = "read", path = "./"}]
-evm_version = "shanghai"
+# evm_version = "shanghai"
 # [rpc_endpoints]
 # # mainnets
 # # testnets
-# cardona = "https://polygon-zkevm-cardona.blockpi.network/v1/rpc/public"
+# crossfi-testnet = ""
 
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
