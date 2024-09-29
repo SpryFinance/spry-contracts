@@ -81,7 +81,7 @@ contract DeftDEX is DeftPairManager {
     }
 
     receive() external payable {
-        require(msg.sender == WXFI);
+        require(msg.sender == WXFI, "DeftDEX: ONLY_WXFI");
     }
 
     /*******************************\
@@ -491,6 +491,31 @@ contract DeftDEX is DeftPairManager {
             (msg.sender).safeTransferXFI(msg.value - amountXFI);
     }
 
+    function removeLiquidity(
+        address tokenA,
+        address tokenB,
+        uint256 liquidity,
+        uint256 amountAMin,
+        uint256 amountBMin,
+        address to,
+        uint256 deadline
+    )
+        external
+        ensure(deadline)
+        noReentrant
+        returns (uint256 amountTokenA, uint256 amountTokenB)
+    {
+        (amountTokenA, amountTokenB) = _removeLiquidity(
+            tokenA,
+            tokenB,
+            liquidity,
+            amountAMin,
+            amountBMin,
+            to,
+            true
+        );
+    }
+
     function removeLiquidityXFI(
         address token,
         uint256 liquidity,
@@ -504,14 +529,14 @@ contract DeftDEX is DeftPairManager {
         noReentrant
         returns (uint256 amountToken, uint256 amountXFI)
     {
-        (amountToken, amountXFI) = removeLiquidity(
+        (amountToken, amountXFI) = _removeLiquidity(
             token,
             WXFI,
             liquidity,
             amountTokenMin,
             amountXFIMin,
             to,
-            deadline
+            false
         );
     }
 
@@ -523,26 +548,26 @@ contract DeftDEX is DeftPairManager {
         address to,
         uint256 deadline
     ) external ensure(deadline) noReentrant returns (uint256 amountXFI) {
-        (, amountXFI) = removeLiquidity(
+        (, amountXFI) = _removeLiquidity(
             token,
             WXFI,
             liquidity,
             amountTokenMin,
             amountXFIMin,
             to,
-            deadline
+            false
         );
     }
 
-    function removeLiquidity(
+    function _removeLiquidity(
         address tokenA,
         address tokenB,
         uint256 liquidity,
         uint256 amountAMin,
         uint256 amountBMin,
         address to,
-        uint256 deadline
-    ) public ensure(deadline) noReentrant returns (uint256, uint256) {
+        bool canTransferToken
+    ) private returns (uint256, uint256) {
         RemoveLiquidityAntiDeepStack memory ads = RemoveLiquidityAntiDeepStack(
             to,
             liquidity,
@@ -578,13 +603,13 @@ contract DeftDEX is DeftPairManager {
 
         _burn(pairID, address(this), lp);
 
-        if (token0 != WXFI) token0.safeTransfer(ads.to, amount0);
+        if (canTransferToken || token0 == WXFI) token0.safeTransfer(ads.to, amount0);
         else {
             IWXFI(WXFI).withdraw(amount0);
             (ads.to).safeTransferXFI(amount0);
         }
 
-        if (token1 != WXFI) token1.safeTransfer(ads.to, amount1);
+        if (canTransferToken || token1 == WXFI) token1.safeTransfer(ads.to, amount1);
         else {
             IWXFI(WXFI).withdraw(amount1);
             (ads.to).safeTransferXFI(amount1);
