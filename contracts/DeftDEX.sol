@@ -603,13 +603,13 @@ contract DeftDEX is DeftPairManager {
 
         _burn(pairID, address(this), lp);
 
-        if (canTransferToken || token0 == WXFI) token0.safeTransfer(ads.to, amount0);
+        if (canTransferToken || token0 != WXFI) token0.safeTransfer(ads.to, amount0);
         else {
             IWXFI(WXFI).withdraw(amount0);
             (ads.to).safeTransferXFI(amount0);
         }
 
-        if (canTransferToken || token1 == WXFI) token1.safeTransfer(ads.to, amount1);
+        if (canTransferToken || token1 != WXFI) token1.safeTransfer(ads.to, amount1);
         else {
             IWXFI(WXFI).withdraw(amount1);
             (ads.to).safeTransferXFI(amount1);
