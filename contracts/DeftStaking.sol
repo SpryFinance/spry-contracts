@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 pragma solidity 0.8.20;
 
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {ERC20, IERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 import {IRewardDistributor} from "./interfaces/IRewardDistributor.sol";
@@ -23,9 +23,15 @@ contract DeftStaking is ERC20 {
     IERC20 public immutable deftDexToken;
     IRewardDistributor public immutable rewardDistributor;
 
+    struct UserInfo {
+        uint256 lastBlockUpdate;
+    }
+
     mapping(address => UserInfo) public userInfo;
     uint256 public totalShares;
 
+    event Deposit(address user, uint depositAmount, uint shares);
+    event Withdraw(address user, address recipient, uint withdrawAmount, uint shares);
 
     modifier checkUserBlock() {
         require(
@@ -39,11 +45,11 @@ contract DeftStaking is ERC20 {
     constructor(IERC20 _deftDexToken, IRewardDistributor _rewardDistributor) ERC20("Staked DeftDex Token", "stDeft") {
         require(address(_deftDexToken) != address(0), "Staking::constructor::DeftDex token is not defined");
         require(address(_rewardDistributor) != address(0), "Staking::constructor::RewardDistributor is not defined");
-        deftDexToken = _deftToken;
+        deftDexToken = _deftDexToken;
         rewardDistributor = _rewardDistributor;
     }
 
-    /// @inheritdoc IStaking
+    //  /// @inheritdoc IStaking
     function deposit(uint256 _depositAmount) public checkUserBlock {
         require(_depositAmount != 0, "Staking::deposit::can't deposit zero token");
 
@@ -68,7 +74,7 @@ contract DeftStaking is ERC20 {
         emit Deposit(msg.sender, _depositAmount, _userNewShares);
     }
 
-    /// @inheritdoc IStaking
+    //  /// @inheritdoc IStaking
     function withdraw(address _to, uint256 _sharesAmount) external checkUserBlock {
         require(
             _sharesAmount != 0,
@@ -88,12 +94,12 @@ contract DeftStaking is ERC20 {
         emit Withdraw(msg.sender, _to, _tokensToWithdraw, _sharesAmount);
     }
 
-    /// @inheritdoc IStaking
+    //  /// @inheritdoc IStaking
     function redeemPreviousRewards() public {
         rewardDistributor.withdraw(CAMPAIGN_ID, 0, address(this), address(this));
     }
 
-    /// @inheritdoc IStaking
+    //  /// @inheritdoc IStaking
     function tokensToShares(uint256 _tokens) external view returns (uint256 shares_) {
         uint256 _currentBalance = deftDexToken.balanceOf(address(this));
         _currentBalance += rewardDistributor.pendingReward(CAMPAIGN_ID, address(this));
@@ -101,7 +107,7 @@ contract DeftStaking is ERC20 {
         shares_ = _convertToShares(_tokens, _currentBalance);
     }
 
-    /// @inheritdoc IStaking
+    //  /// @inheritdoc IStaking
     function sharesToTokens(uint256 _shares) external view returns (uint256 tokens_) {
         uint256 _currentBalance = deftDexToken.balanceOf(address(this));
         _currentBalance += rewardDistributor.pendingReward(CAMPAIGN_ID, address(this));

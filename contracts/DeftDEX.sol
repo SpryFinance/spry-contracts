@@ -154,7 +154,7 @@ contract DeftDEX is DeftPairManager {
 
         require(amount >= amountOutMin, "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT");
 
-        path0.safeTransferFrom(msg.sender, address(this), amount);
+        path0.safeTransferFrom(msg.sender, address(this), amountIn);
 
         _swap(amount, path0, path1, to, correctedFee, false);
     }
@@ -178,7 +178,7 @@ contract DeftDEX is DeftPairManager {
 
         path0.safeTransferFrom(msg.sender, address(this), amount);
 
-        _swap(amount, path0, path1, to, correctedFee, false);
+        _swap(amountOut, path0, path1, to, correctedFee, false);
     }
 
     function swapExactXFIForToken(
@@ -200,7 +200,7 @@ contract DeftDEX is DeftPairManager {
 
         require(amount >= amountOutMin, "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT");
 
-        IWXFI(WXFI).deposit{value: amount}();
+        IWXFI(WXFI).deposit{value: msg.value}();
 
         _swap(amount, path0, path1, to, correctedFee, false);
     }
@@ -226,7 +226,7 @@ contract DeftDEX is DeftPairManager {
 
         path0.safeTransferFrom(msg.sender, address(this), amount);
 
-        _swap(amount, path0, path1, to, correctedFee, true);
+        _swap(amountOut, path0, path1, to, correctedFee, true);
     }
 
     function swapExactTokenForXFI(
@@ -248,7 +248,7 @@ contract DeftDEX is DeftPairManager {
 
         require(amount >= amountOutMin, "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT");
 
-        path0.safeTransferFrom(msg.sender, address(this), amount);
+        path0.safeTransferFrom(msg.sender, address(this), amountIn);
 
         _swap(amount, path0, path1, to, correctedFee, true);
     }
@@ -274,7 +274,7 @@ contract DeftDEX is DeftPairManager {
 
         IWXFI(WXFI).deposit{value: amount}();
 
-        _swap(amount, path0, path1, to, correctedFee, false);
+        _swap(amountOut, path0, path1, to, correctedFee, false);
 
         if (msg.value > amount)
             (msg.sender).safeTransferXFI(msg.value - amount);
@@ -678,12 +678,11 @@ contract DeftDEX is DeftPairManager {
         (bytes32 pairID, address token0, ) = _pairChecker(path0, path1, false);
 
         (uint112 reserve0, uint112 reserve1, ) = getReserves(pairID);
-        (uint256 reserveInput, ) = path0 == token0
-            ? (reserve0, reserve1)
-            : (reserve1, reserve0);
+        uint256 reserveInput = path0 == token0
+            ? reserve0
+            : reserve1;
 
-        uint256 amountInput = ICFC20(path0).balanceOf(address(this)) -
-            reserveInput;
+        uint256 amountInput = ICFC20(path0).balanceOf(address(this)) - reserveInput;
         (uint256 amountOutput, uint256 correctedFee) = getAmountOut(
             amountInput,
             path0,
@@ -694,7 +693,7 @@ contract DeftDEX is DeftPairManager {
         _finalizeSwap(
             pairID,
             path0 == token0 ? 0 : amountOutput,
-            path0 != token0 ? amountOutput : 0,
+            path1 != token0 ? amountOutput : 0,
             to,
             correctedFee,
             unwrapable
@@ -745,8 +744,8 @@ contract DeftDEX is DeftPairManager {
         uint256 balance0 = ICFC20(token0).balanceOf(address(this));
         uint256 balance1 = ICFC20(token1).balanceOf(address(this));
 
-        if (amount0Out != 0) balance0 -= amount0Out;
-        if (amount1Out != 0) balance1 -= amount1Out;
+        // if (amount0Out != 0) balance0 -= amount0Out;
+        // if (amount1Out != 0) balance1 -= amount1Out;
 
         SwapAntiDeepStack memory ads = SwapAntiDeepStack(
             balance0 > reserve0 - amount0Out
@@ -765,9 +764,9 @@ contract DeftDEX is DeftPairManager {
         );
 
         require(
-            (balance0 * 1000 - ads.amount0In * correctedFee) *
-                (balance1 * 1000 - ads.amount1In * correctedFee) >=
-                uint256(reserve0) * reserve1 * 1e6,
+            ((balance0 * 1000) - (ads.amount0In * correctedFee)) *
+                ((balance1 * 1000) - (ads.amount1In * correctedFee)) >=
+                (uint256(reserve0) * uint256(reserve1) * 1e6),
             "DeftDEX: K"
         );
 
