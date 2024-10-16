@@ -15,7 +15,6 @@ import {ModifiedERC6909} from "./ModifiedERC6909.sol";
 /// @title Deft pair manager contract
 /// @notice This contract provides pair-related tasks at low-level
 /// @dev ERC6909 standard is intended to facilitate calculations
-
 abstract contract DeftPairManager is ModifiedERC6909 {
     using UQ112x112 for uint112;
     using UQ112x112 for uint224;
