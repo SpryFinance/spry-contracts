@@ -12,12 +12,6 @@ import {IRewardDistributor} from "./interfaces/IRewardDistributor.sol";
     __  / / /_  __/  __  /_   __  /   
     _  /_/ /_  /___  _  __/   _  /    
     /_____/ /_____/  /_/      /_/     
-                                    
-    Deft Dex is a decentralized and secure AMM with uniform liquidity and variable LP fees. 
-    Deft Dex reimagines impermanent loss, converting it into a benefit for LPs. This innovative approach mitigates 
-    the full profit potential for arbitrageurs, ensuring benefits for LP even in volatile market conditions.
-
-    Full whitepaper is availabel at: https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf
 
     Contracts Repository: (https://github.com/DeftFinance/smart-contracts/)
 
