@@ -30,7 +30,6 @@ import {IRewardDistributor} from "./interfaces/IRewardDistributor.sol";
 /// @title Staking
 /// @notice Implementation of an APY staking pool. Users can deposit Deft token for a share in the pool. New shares depend of
 /// current shares supply and DEFT in the pool.
-
 contract DeftStaking is ERC20 {
 
     using SafeERC20 for IERC20;
