@@ -24,7 +24,7 @@ import {DeftPairManager} from "./DeftPairManager.sol";
     Deft Dex reimagines impermanent loss, converting it into a benefit for LPs. This innovative approach mitigates 
     the full profit potential for arbitrageurs, ensuring benefits for LP even in volatile market conditions.
 
-    Full whitepaper is availabel at: https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf
+    The full whitepaper is available at: https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf
 
     Contracts Repository: (https://github.com/DeftFinance/smart-contracts/)
 
@@ -34,9 +34,8 @@ import {DeftPairManager} from "./DeftPairManager.sol";
             (GitHub: @MatinR1, X: https://x.com/MatinRezaii1)
         Mohammadreza Faraji: Main Contributor, System Designer
             (GitHub: @FarajiOranj, X: https://x.com/FarajiOranj)
-        Saeed Abdi : Web2 Full Stack Developer
+        Saeed Abdi: Web2 Full Stack Developer
             (GitHub: @saeidAbdi)
-
 */
 
 /// @title The main DEX contract responsible for interacting with different pairs
