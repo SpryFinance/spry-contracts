@@ -250,8 +250,42 @@ contract SmartFeeLibTest is Test {
         pair.swapExactTokenForTokenSupportingFOT(
                 1e18, 1e16, address(token1), address(token0), address(this), block.timestamp + 10
         );
+    }
 
-        // pair.swapExactTokenForToken(1e18, 1e16, address(token0), address(token1), address(this), block.timestamp + 10);
+    function testMultipleSwaps() public {
+
+        deal(address(token0), address(this), 1e24);
+        deal(address(token1), address(this), 1e24);
+        token0.approve(address(pair), type(uint256).max);
+        token1.approve(address(pair), type(uint256).max);
+
+        (,, uint liquidity) = pair.addLiquidity(address(token0), address(token1), 1e19, 1e19, 5e17, 5e17, address(this), block.timestamp + 10);
+        console.log("The liquidity added is: ", liquidity);
+
+        (uint amount, uint fee) = 
+            pair.swapExactTokenForToken(1e18, 1e16, address(token1), address(token0), address(this), block.timestamp + 10);
+
+        console.log("The first time fee is: ", fee);
+        assertLt(fee, 55, "Fee exceeds its maximum");
+
+        (amount, fee) = 
+            pair.swapExactTokenForToken(1e18, 1e16, address(token0), address(token1), address(this), block.timestamp + 10);
+
+        console.log("The second time fee is: ", fee);
+        assertLt(fee, 55, "Fee exceeds its maximum");
+
+        (amount, fee) = 
+            pair.swapExactTokenForToken(1.1e20, 1e16, address(token1), address(token0), address(this), block.timestamp + 10);
+
+        console.log("The second time fee is: ", fee);
+        assertLt(fee, 55, "Fee exceeds its maximum");
+
+        (amount, fee) = 
+            pair.swapExactTokenForToken(5e20, 1e16, address(token0), address(token1), address(this), block.timestamp + 10);
+
+        console.log("The second time fee is: ", fee);
+        assertLt(fee, 55, "Fee exceeds its maximum");
+
     }
 
 

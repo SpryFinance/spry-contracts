@@ -13,6 +13,35 @@ import {TransferHelper} from "./libs/TransferHelper.sol";
 // Contracts, Abstracts
 import {DeftPairManager} from "./DeftPairManager.sol";
 
+/*
+    __________________________________
+    ___  __ \__  ____/__  ____/__  __/
+    __  / / /_  __/  __  /_   __  /   
+    _  /_/ /_  /___  _  __/   _  /    
+    /_____/ /_____/  /_/      /_/     
+                                    
+    Deft Dex is a decentralized and secure AMM with uniform liquidity and variable LP fees. 
+    Deft Dex reimagines impermanent loss, converting it into a benefit for LPs. This innovative approach mitigates 
+    the full profit potential for arbitrageurs, ensuring benefits for LP even in volatile market conditions.
+
+    Full whitepaper is availabel at: https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf
+
+    Contracts Repository: (https://github.com/DeftFinance/smart-contracts/)
+
+    Developers: 
+
+        Matin Rezaii: Main Contributor, Author, Security Auditor 
+            (GitHub: @MatinR1, X: https://x.com/MatinRezaii1)
+        Mohammadreza Faraji: Main Contributor, System Designer
+            (GitHub: @FarajiOranj, X: https://x.com/FarajiOranj)
+        Saeed Abdi : Web2 Full Stack Developer
+            (GitHub: @saeidAbdi)
+
+*/
+
+/// @title The main DEX contract responsible for interacting with different pairs
+/// @notice Inherits the DeftPairManager and provides a high level interface for the DEX
+
 contract DeftDEX is DeftPairManager {
     using Math for uint256;
     using TransferHelper for address;

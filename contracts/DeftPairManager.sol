@@ -12,6 +12,36 @@ import {SmartFeeLib, ReserveInOut} from "./libs/SmartFeeLib.sol";
 // Contracts, Abstracts
 import {ModifiedERC6909} from "./ModifiedERC6909.sol";
 
+/*
+    __________________________________
+    ___  __ \__  ____/__  ____/__  __/
+    __  / / /_  __/  __  /_   __  /   
+    _  /_/ /_  /___  _  __/   _  /    
+    /_____/ /_____/  /_/      /_/     
+                                    
+    Deft Dex is a decentralized and secure AMM with uniform liquidity and variable LP fees. 
+    Deft Dex reimagines impermanent loss, converting it into a benefit for LPs. This innovative approach mitigates 
+    the full profit potential for arbitrageurs, ensuring benefits for LP even in volatile market conditions.
+
+    Full whitepaper is availabel at: https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf
+
+    Contracts Repository: (https://github.com/DeftFinance/smart-contracts/)
+
+    Developers: 
+    
+        Matin Rezaii: Main Contributor, Author, Security Auditor 
+            (GitHub: @MatinR1, X: https://x.com/MatinRezaii1)
+        Mohammadreza Faraji: Main Contributor, System Designer
+            (GitHub: @FarajiOranj, X: https://x.com/FarajiOranj)
+        Saeed Abdi : Web2 Full Stack Developer
+            (GitHub: @saeidAbdi)
+
+*/
+
+/// @title Deft pair manager contract
+/// @notice This contract provides pair-related tasks at low-level
+/// @dev ERC6909 standard is intended to facilitate calculations
+
 abstract contract DeftPairManager is ModifiedERC6909 {
     using UQ112x112 for uint112;
     using UQ112x112 for uint224;
