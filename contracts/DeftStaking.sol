@@ -6,11 +6,36 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 
 import {IRewardDistributor} from "./interfaces/IRewardDistributor.sol";
 
-/**
- * @title Staking
- * @notice Implementation of an APY staking pool. Users can deposit Deft token for a share in the pool. New shares depend of
- * current shares supply and DEFT in the pool. .
- */
+/*
+    __________________________________
+    ___  __ \__  ____/__  ____/__  __/
+    __  / / /_  __/  __  /_   __  /   
+    _  /_/ /_  /___  _  __/   _  /    
+    /_____/ /_____/  /_/      /_/     
+                                    
+    Deft Dex is a decentralized and secure AMM with uniform liquidity and variable LP fees. 
+    Deft Dex reimagines impermanent loss, converting it into a benefit for LPs. This innovative approach mitigates 
+    the full profit potential for arbitrageurs, ensuring benefits for LP even in volatile market conditions.
+
+    Full whitepaper is availabel at: https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf
+
+    Contracts Repository: (https://github.com/DeftFinance/smart-contracts/)
+
+    Developers: 
+    
+        Matin Rezaii: Main Contributor, Author, Security Auditor 
+            (GitHub: @MatinR1, X: https://x.com/MatinRezaii1)
+        Mohammadreza Faraji: Main Contributor, System Designer
+            (GitHub: @FarajiOranj, X: https://x.com/FarajiOranj)
+        Saeed Abdi : Web2 Full Stack Developer
+            (GitHub: @saeidAbdi)
+
+*/
+
+
+/// @title Staking
+/// @notice Implementation of an APY staking pool. Users can deposit Deft token for a share in the pool. New shares depend of
+/// current shares supply and DEFT in the pool.
 
 contract DeftStaking is ERC20 {
 
