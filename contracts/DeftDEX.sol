@@ -27,20 +27,11 @@ import {DeftPairManager} from "./DeftPairManager.sol";
     The full whitepaper is available at: https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf
 
     Contracts Repository: (https://github.com/DeftFinance/smart-contracts/)
-
-    Developers: 
-
-        Matin Rezaii: Main Contributor, Author, Security Auditor 
-            (GitHub: @MatinR1, X: https://x.com/MatinRezaii1)
-        Mohammadreza Faraji: Main Contributor, System Designer
-            (GitHub: @FarajiOranj, X: https://x.com/FarajiOranj)
-        Saeed Abdi: Web2 Full Stack Developer
-            (GitHub: @saeidAbdi)
 */
 
+/// @author @FarajiOranj, Founder of @DeftFinance
 /// @title The main DEX contract responsible for interacting with different pairs
 /// @notice Inherits the DeftPairManager and provides a high level interface for the DEX
-
 contract DeftDEX is DeftPairManager {
     using Math for uint256;
     using TransferHelper for address;
