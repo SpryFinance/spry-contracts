@@ -14,19 +14,9 @@ import {IRewardDistributor} from "./interfaces/IRewardDistributor.sol";
     /_____/ /_____/  /_/      /_/     
 
     Contracts Repository: (https://github.com/DeftFinance/smart-contracts/)
-
-    Developers: 
-    
-        Matin Rezaii: Main Contributor, Author, Security Auditor 
-            (GitHub: @MatinR1, X: https://x.com/MatinRezaii1)
-        Mohammadreza Faraji: Main Contributor, System Designer
-            (GitHub: @FarajiOranj, X: https://x.com/FarajiOranj)
-        Saeed Abdi : Web2 Full Stack Developer
-            (GitHub: @saeidAbdi)
-
 */
 
-
+/// @author @FarajiOranj, Founder of @DeftFinance
 /// @title Staking
 /// @notice Implementation of an APY staking pool. Users can deposit Deft token for a share in the pool. New shares depend of
 /// current shares supply and DEFT in the pool.
