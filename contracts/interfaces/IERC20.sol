@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity 0.8.25;
 
-import {ICFC20Meta} from "./ICFC20Meta.sol";
+import {IERC20Meta} from "./IERC20Meta.sol";
 
-interface ICFC20 is ICFC20Meta {
+interface IERC20 is IERC20Meta {
     event Approval(
         address indexed owner,
         address indexed spender,

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity 0.8.25;
 
 /// @notice Minimalist and gas efficient standard ERC6909 implementation.
 /// @dev This contract is the modified version of ERC6909.

@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.20;
+pragma solidity 0.8.25;
 
-interface IWXFI {
+interface IWETH {
     function deposit() external payable;
 
     function withdraw(uint256) external;

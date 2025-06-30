@@ -1,17 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity 0.8.20;
+pragma solidity 0.8.25;
 
 /*************************************************\
 |-*-*-*-*-*-*-*-*-*   IMPORTS   *-*-*-*-*-*-*-*-*-|
 \*************************************************/
 // Interfaces
-import {ICFC20} from "./interfaces/ICFC20.sol";
-import {IWXFI} from "./interfaces/IWXFI.sol";
+import {IERC20} from "./interfaces/IERC20.sol";
+import {IWETH} from "./interfaces/IWETH.sol";
 // Libraries
 import {Math} from "./libs/Math.sol";
 import {TransferHelper} from "./libs/TransferHelper.sol";
 // Contracts, Abstracts
-import {DeftPairManager} from "./DeftPairManager.sol";
+import {SpryPairManager} from "./SpryPairManager.sol";
 
 /*
     __________________________________
@@ -20,19 +20,19 @@ import {DeftPairManager} from "./DeftPairManager.sol";
     _  /_/ /_  /___  _  __/   _  /    
     /_____/ /_____/  /_/      /_/     
                                     
-    Deft Dex is a decentralized and secure AMM with uniform liquidity and variable LP fees. 
-    Deft Dex reimagines impermanent loss, converting it into a benefit for LPs. This innovative approach mitigates 
+    Spry is a decentralized and secure AMM with uniform liquidity and variable LP fees. 
+    Spry reimagines impermanent loss, converting it into a benefit for LPs. This innovative approach mitigates 
     the full profit potential for arbitrageurs, ensuring benefits for LP even in volatile market conditions.
 
-    The full whitepaper is available at: https://github.com/DeftFinance/smart-contracts/blob/main/assets/DeftDex-Whitepaper.pdf
+    The full whitepaper is available at: https://github.com/SpryFinance/smart-contracts/blob/main/assets/Spry-Whitepaper.pdf
 
-    Contracts Repository: (https://github.com/DeftFinance/smart-contracts/)
+    Contracts Repository: (https://github.com/SpryFinance/smart-contracts/)
 */
 
-/// @author @FarajiOranj, Founder of @DeftFinance
+/// @author @DynabitsLab
 /// @title The main DEX contract responsible for interacting with different pairs
-/// @notice Inherits the DeftPairManager and provides a high level interface for the DEX
-contract DeftDEX is DeftPairManager {
+/// @notice Inherits the SpryPairManager and provides a high level interface for the DEX
+contract Spry is SpryPairManager {
     using Math for uint256;
     using TransferHelper for address;
 
@@ -68,14 +68,14 @@ contract DeftDEX is DeftPairManager {
     /*******************************\
     |-*-*-*-*   CONSTANTS   *-*-*-*-|
     \*******************************/
-    address public immutable WXFI;
+    address public immutable WETH;
     uint256 public constant MINIMUM_LIQUIDITY = 10**3;
 
     /*******************************\
     |-*-*-*-*   MODIFIERS   *-*-*-*-|
     \*******************************/
     modifier ensure(uint256 deadline) {
-        require(deadline >= block.timestamp, "DeftDEX: EXPIRED");
+        require(deadline >= block.timestamp, "Spry: EXPIRED");
 
         _;
     }
@@ -84,35 +84,35 @@ contract DeftDEX is DeftPairManager {
     |-*-*-*-*   BUILT-IN   *-*-*-*-|
     \******************************/
     modifier noReentrant() {
-        require(locked == 0, "DeftDEX: RE-ENTRANT");
+        require(locked == 0, "Spry: RE-ENTRANT");
         locked = 1;
         _;
         delete locked;
     }
 
-    constructor(address fts, address wxfi) {
+    constructor(address fts, address weth) {
         owner = msg.sender;
         feeToSetter = fts;
 
-        require(wxfi != address(0), "DeftDEX: ZERO_ADDRESS");
+        require(weth != address(0), "Spry: ZERO_ADDRESS");
 
-        WXFI = wxfi;
+        WETH = weth;
     }
 
     receive() external payable {
-        require(msg.sender == WXFI, "DeftDEX: ONLY_WXFI");
+        require(msg.sender == WETH, "Spry: ONLY_WETH");
     }
 
     /*******************************\
     |-*-*-*   ADMINSTRATION   *-*-*-|
     \*******************************/
     function setFeeTo(address _feeTo) external {
-        require(msg.sender == feeToSetter, "DeftDEX: FORBIDDEN");
+        require(msg.sender == feeToSetter, "Spry: FORBIDDEN");
         feeTo = _feeTo;
     }
 
     function setFeeToSetter(address _feeToSetter) external {
-        require(msg.sender == feeToSetter, "DeftDEX: FORBIDDEN");
+        require(msg.sender == feeToSetter, "Spry: FORBIDDEN");
         feeToSetter = _feeToSetter;
     }
 
@@ -132,11 +132,11 @@ contract DeftDEX is DeftPairManager {
 
         token0.safeTransfer(
             to,
-            ICFC20(token0).balanceOf(address(this)) - pairData[pairID].reserve0
+            IERC20(token0).balanceOf(address(this)) - pairData[pairID].reserve0
         );
         token1.safeTransfer(
             to,
-            ICFC20(token1).balanceOf(address(this)) - pairData[pairID].reserve1
+            IERC20(token1).balanceOf(address(this)) - pairData[pairID].reserve1
         );
     }
 
@@ -149,8 +149,8 @@ contract DeftDEX is DeftPairManager {
 
         _update(
             pairID,
-            ICFC20(token0).balanceOf(address(this)),
-            ICFC20(token1).balanceOf(address(this)),
+            IERC20(token0).balanceOf(address(this)),
+            IERC20(token1).balanceOf(address(this)),
             pairData[pairID].reserve0,
             pairData[pairID].reserve1
         );
@@ -171,7 +171,7 @@ contract DeftDEX is DeftPairManager {
     {
         (amount, correctedFee) = getAmountOut(amountIn, path0, path1);
 
-        require(amount >= amountOutMin, "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(amount >= amountOutMin, "Spry: INSUFFICIENT_OUTPUT_AMOUNT");
 
         path0.safeTransferFrom(msg.sender, address(this), amountIn);
 
@@ -193,14 +193,14 @@ contract DeftDEX is DeftPairManager {
     {
         (amount, correctedFee) = getAmountIn(amountOut, path0, path1);
 
-        require(amount <= amountInMax, "DeftDEX: EXCESSIVE_INPUT_AMOUNT");
+        require(amount <= amountInMax, "Spry: EXCESSIVE_INPUT_AMOUNT");
 
         path0.safeTransferFrom(msg.sender, address(this), amount);
 
         _swap(amountOut, path0, path1, to, correctedFee, false);
     }
 
-    function swapExactXFIForToken(
+    function swapExactETHForToken(
         uint256 amountOutMin,
         address path0,
         address path1,
@@ -213,18 +213,18 @@ contract DeftDEX is DeftPairManager {
         noReentrant
         returns (uint256 amount, uint256 correctedFee)
     {
-        require(path0 == WXFI, "DeftDEX: INVALID_PATH");
+        require(path0 == WETH, "Spry: INVALID_PATH");
 
         (amount, correctedFee) = getAmountOut(msg.value, path0, path1);
 
-        require(amount >= amountOutMin, "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(amount >= amountOutMin, "Spry: INSUFFICIENT_OUTPUT_AMOUNT");
 
-        IWXFI(WXFI).deposit{value: msg.value}();
+        IWETH(WETH).deposit{value: msg.value}();
 
         _swap(amount, path0, path1, to, correctedFee, false);
     }
 
-    function swapTokenForExactXFI(
+    function swapTokenForExactETH(
         uint256 amountOut,
         uint256 amountInMax,
         address path0,
@@ -237,18 +237,18 @@ contract DeftDEX is DeftPairManager {
         noReentrant
         returns (uint256 amount, uint256 correctedFee)
     {
-        require(path1 == WXFI, "DeftDEX: INVALID_PATH");
+        require(path1 == WETH, "Spry: INVALID_PATH");
 
         (amount, correctedFee) = getAmountIn(amountOut, path0, path1);
 
-        require(amount <= amountInMax, "DeftDEX: EXCESSIVE_INPUT_AMOUNT");
+        require(amount <= amountInMax, "Spry: EXCESSIVE_INPUT_AMOUNT");
 
         path0.safeTransferFrom(msg.sender, address(this), amount);
 
         _swap(amountOut, path0, path1, to, correctedFee, true);
     }
 
-    function swapExactTokenForXFI(
+    function swapExactTokenForETH(
         uint256 amountIn,
         uint256 amountOutMin,
         address path0,
@@ -261,18 +261,18 @@ contract DeftDEX is DeftPairManager {
         noReentrant
         returns (uint256 amount, uint256 correctedFee)
     {
-        require(path1 == WXFI, "DeftDEX: INVALID_PATH");
+        require(path1 == WETH, "Spry: INVALID_PATH");
 
         (amount, correctedFee) = getAmountOut(amountIn, path0, path1);
 
-        require(amount >= amountOutMin, "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(amount >= amountOutMin, "Spry: INSUFFICIENT_OUTPUT_AMOUNT");
 
         path0.safeTransferFrom(msg.sender, address(this), amountIn);
 
         _swap(amount, path0, path1, to, correctedFee, true);
     }
 
-    function swapXFIForExactToken(
+    function swapETHForExactToken(
         uint256 amountOut,
         address path0,
         address path1,
@@ -285,18 +285,18 @@ contract DeftDEX is DeftPairManager {
         noReentrant
         returns (uint256 amount, uint256 correctedFee)
     {
-        require(path0 == WXFI, "DeftDEX: INVALID_PATH");
+        require(path0 == WETH, "Spry: INVALID_PATH");
 
         (amount, correctedFee) = getAmountIn(amountOut, path0, path1);
 
-        require(amount <= msg.value, "DeftDEX: EXCESSIVE_INPUT_AMOUNT");
+        require(amount <= msg.value, "Spry: EXCESSIVE_INPUT_AMOUNT");
 
-        IWXFI(WXFI).deposit{value: amount}();
+        IWETH(WETH).deposit{value: amount}();
 
         _swap(amountOut, path0, path1, to, correctedFee, false);
 
         if (msg.value > amount)
-            (msg.sender).safeTransferXFI(msg.value - amount);
+            (msg.sender).safeTransferETH(msg.value - amount);
     }
 
     function swapExactTokenForTokenSupportingFOT(
@@ -309,38 +309,38 @@ contract DeftDEX is DeftPairManager {
     ) external ensure(deadline) noReentrant {
         path0.safeTransferFrom(msg.sender, address(this), amountIn);
 
-        uint256 balanceBefore = ICFC20(path1).balanceOf(to);
+        uint256 balanceBefore = IERC20(path1).balanceOf(to);
 
         _swapSupportingFOT(path0, path1, to, false);
 
         require(
-            ICFC20(path1).balanceOf(to) - balanceBefore >= amountOutMin,
-            "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT"
+            IERC20(path1).balanceOf(to) - balanceBefore >= amountOutMin,
+            "Spry: INSUFFICIENT_OUTPUT_AMOUNT"
         );
     }
 
-    function swapExactXFIForTokenSupportingFOT(
+    function swapExactETHForTokenSupportingFOT(
         uint256 amountOutMin,
         address path0,
         address path1,
         address to,
         uint256 deadline
     ) external payable ensure(deadline) noReentrant {
-        require(path0 == WXFI, "DeftDEX: INVALID_PATH");
+        require(path0 == WETH, "Spry: INVALID_PATH");
 
-        IWXFI(WXFI).deposit{value: msg.value}();
+        IWETH(WETH).deposit{value: msg.value}();
 
-        uint256 balanceBefore = ICFC20(path1).balanceOf(to);
+        uint256 balanceBefore = IERC20(path1).balanceOf(to);
 
         _swapSupportingFOT(path0, path1, to, false);
 
         require(
-            ICFC20(path1).balanceOf(to) - balanceBefore >= amountOutMin,
-            "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT"
+            IERC20(path1).balanceOf(to) - balanceBefore >= amountOutMin,
+            "Spry: INSUFFICIENT_OUTPUT_AMOUNT"
         );
     }
 
-    function swapExactTokenForXFISupportingFOT(
+    function swapExactTokenForETHSupportingFOT(
         uint256 amountIn,
         uint256 amountOutMin,
         address path0,
@@ -348,17 +348,17 @@ contract DeftDEX is DeftPairManager {
         address to,
         uint256 deadline
     ) external ensure(deadline) noReentrant {
-        require(path1 == WXFI, "DeftDEX: INVALID_PATH");
+        require(path1 == WETH, "Spry: INVALID_PATH");
 
         path0.safeTransferFrom(msg.sender, address(this), amountIn);
 
         _swapSupportingFOT(path0, path1, to, true);
 
-        uint256 amountOut = ICFC20(WXFI).balanceOf(address(this));
+        uint256 amountOut = IERC20(WETH).balanceOf(address(this));
 
         require(
             amountOut >= amountOutMin,
-            "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT"
+            "Spry: INSUFFICIENT_OUTPUT_AMOUNT"
         );
     }
 
@@ -405,10 +405,10 @@ contract DeftDEX is DeftPairManager {
         );
 
         (uint112 reserve0, uint112 reserve1, ) = getReserves(pairID);
-        uint256 balance0 = ICFC20(pairData[pairID].tokens[0]).balanceOf(
+        uint256 balance0 = IERC20(pairData[pairID].tokens[0]).balanceOf(
             address(this)
         );
-        uint256 balance1 = ICFC20(pairData[pairID].tokens[1]).balanceOf(
+        uint256 balance1 = IERC20(pairData[pairID].tokens[1]).balanceOf(
             address(this)
         );
         uint256 amount0 = balance0 - reserve0;
@@ -427,7 +427,7 @@ contract DeftDEX is DeftPairManager {
             );
         }
 
-        require(liquidity != 0, "DeftDEX: INSUFFICIENT_LIQUIDITY_MINTED");
+        require(liquidity != 0, "Spry: INSUFFICIENT_LIQUIDITY_MINTED");
 
         _mint(pairID, _to, liquidity);
         _update(pairID, balance0, balance1, reserve0, reserve1);
@@ -440,11 +440,11 @@ contract DeftDEX is DeftPairManager {
         emit Mint(msg.sender, amount0, amount1);
     }
 
-    function addLiquidityXFI(
+    function addLiquidityETH(
         address token,
         uint256 amountTokenDesired,
         uint256 amountTokenMin,
-        uint256 amountXFIMin,
+        uint256 amountETHMin,
         address to,
         uint256 deadline
     )
@@ -454,28 +454,28 @@ contract DeftDEX is DeftPairManager {
         noReentrant
         returns (
             uint256 amountToken,
-            uint256 amountXFI,
+            uint256 amountETH,
             uint256 liquidity
         )
     {
         bytes32 pairID;
-        (amountToken, amountXFI, pairID) = _addLiquidity(
+        (amountToken, amountETH, pairID) = _addLiquidity(
             token,
-            WXFI,
+            WETH,
             amountTokenDesired,
             msg.value,
             amountTokenMin,
-            amountXFIMin
+            amountETHMin
         );
 
         token.safeTransferFrom(msg.sender, address(this), amountToken);
-        IWXFI(WXFI).deposit{value: amountXFI}();
+        IWETH(WETH).deposit{value: amountETH}();
 
         (uint112 reserve0, uint112 reserve1, ) = getReserves(pairID);
-        uint256 balance0 = ICFC20(pairData[pairID].tokens[0]).balanceOf(
+        uint256 balance0 = IERC20(pairData[pairID].tokens[0]).balanceOf(
             address(this)
         );
-        uint256 balance1 = ICFC20(pairData[pairID].tokens[1]).balanceOf(
+        uint256 balance1 = IERC20(pairData[pairID].tokens[1]).balanceOf(
             address(this)
         );
         uint256 amount0 = balance0 - reserve0;
@@ -494,7 +494,7 @@ contract DeftDEX is DeftPairManager {
             );
         }
 
-        require(liquidity != 0, "DeftDEX: INSUFFICIENT_LIQUIDITY_MINTED");
+        require(liquidity != 0, "Spry: INSUFFICIENT_LIQUIDITY_MINTED");
 
         _mint(pairID, _to, liquidity);
         _update(pairID, balance0, balance1, reserve0, reserve1);
@@ -506,8 +506,8 @@ contract DeftDEX is DeftPairManager {
 
         emit Mint(msg.sender, amount0, amount1);
 
-        if (msg.value > amountXFI)
-            (msg.sender).safeTransferXFI(msg.value - amountXFI);
+        if (msg.value > amountETH)
+            (msg.sender).safeTransferETH(msg.value - amountETH);
     }
 
     function removeLiquidity(
@@ -535,44 +535,44 @@ contract DeftDEX is DeftPairManager {
         );
     }
 
-    function removeLiquidityXFI(
+    function removeLiquidityETH(
         address token,
         uint256 liquidity,
         uint256 amountTokenMin,
-        uint256 amountXFIMin,
+        uint256 amountETHMin,
         address to,
         uint256 deadline
     )
         external
         ensure(deadline)
         noReentrant
-        returns (uint256 amountToken, uint256 amountXFI)
+        returns (uint256 amountToken, uint256 amountETH)
     {
-        (amountToken, amountXFI) = _removeLiquidity(
+        (amountToken, amountETH) = _removeLiquidity(
             token,
-            WXFI,
+            WETH,
             liquidity,
             amountTokenMin,
-            amountXFIMin,
+            amountETHMin,
             to,
             false
         );
     }
 
-    function removeLiquidityXFISupportingFOT(
+    function removeLiquidityETHSupportingFOT(
         address token,
         uint256 liquidity,
         uint256 amountTokenMin,
-        uint256 amountXFIMin,
+        uint256 amountETHMin,
         address to,
         uint256 deadline
-    ) external ensure(deadline) noReentrant returns (uint256 amountXFI) {
-        (, amountXFI) = _removeLiquidity(
+    ) external ensure(deadline) noReentrant returns (uint256 amountETH) {
+        (, amountETH) = _removeLiquidity(
             token,
-            WXFI,
+            WETH,
             liquidity,
             amountTokenMin,
-            amountXFIMin,
+            amountETHMin,
             to,
             false
         );
@@ -607,8 +607,8 @@ contract DeftDEX is DeftPairManager {
         transferFrom(pairID, msg.sender, address(this), ads.liquidity);
 
         (uint112 reserve0, uint112 reserve1, ) = getReserves(pairID);
-        uint256 balance0 = ICFC20(token0).balanceOf(address(this));
-        uint256 balance1 = ICFC20(token1).balanceOf(address(this));
+        uint256 balance0 = IERC20(token0).balanceOf(address(this));
+        uint256 balance1 = IERC20(token1).balanceOf(address(this));
         uint256 lp = balanceOf(pairID, address(this));
         bool feeOn = _mintFee(pairID, reserve0, reserve1);
         uint256 _totalSupply = totalSupply(pairID);
@@ -617,25 +617,25 @@ contract DeftDEX is DeftPairManager {
 
         require(
             amount0 != 0 && amount1 != 0,
-            "DeftDEX: INSUFFICIENT_LIQUIDITY_BURNED"
+            "Spry: INSUFFICIENT_LIQUIDITY_BURNED"
         );
 
         _burn(pairID, address(this), lp);
 
-        if (canTransferToken || token0 != WXFI) token0.safeTransfer(ads.to, amount0);
+        if (canTransferToken || token0 != WETH) token0.safeTransfer(ads.to, amount0);
         else {
-            IWXFI(WXFI).withdraw(amount0);
-            (ads.to).safeTransferXFI(amount0);
+            IWETH(WETH).withdraw(amount0);
+            (ads.to).safeTransferETH(amount0);
         }
 
-        if (canTransferToken || token1 != WXFI) token1.safeTransfer(ads.to, amount1);
+        if (canTransferToken || token1 != WETH) token1.safeTransfer(ads.to, amount1);
         else {
-            IWXFI(WXFI).withdraw(amount1);
-            (ads.to).safeTransferXFI(amount1);
+            IWETH(WETH).withdraw(amount1);
+            (ads.to).safeTransferETH(amount1);
         }
 
-        balance0 = ICFC20(token0).balanceOf(address(this));
-        balance1 = ICFC20(token1).balanceOf(address(this));
+        balance0 = IERC20(token0).balanceOf(address(this));
+        balance1 = IERC20(token1).balanceOf(address(this));
 
         _update(pairID, balance0, balance1, reserve0, reserve1);
 
@@ -652,11 +652,11 @@ contract DeftDEX is DeftPairManager {
 
         require(
             ads.amountA >= ads.amountAMin,
-            "DeftDEX: INSUFFICIENT_A_AMOUNT"
+            "Spry: INSUFFICIENT_A_AMOUNT"
         );
         require(
             ads.amountB >= ads.amountBMin,
-            "DeftDEX: INSUFFICIENT_B_AMOUNT"
+            "Spry: INSUFFICIENT_B_AMOUNT"
         );
 
         return (ads.amountA, ads.amountB);
@@ -701,7 +701,7 @@ contract DeftDEX is DeftPairManager {
             ? reserve0
             : reserve1;
 
-        uint256 amountInput = ICFC20(path0).balanceOf(address(this)) - reserveInput;
+        uint256 amountInput = IERC20(path0).balanceOf(address(this)) - reserveInput;
         (uint256 amountOutput, uint256 correctedFee) = getAmountOut(
             amountInput,
             path0,
@@ -729,14 +729,14 @@ contract DeftDEX is DeftPairManager {
     ) private {
         require(
             amount0Out != 0 || amount1Out != 0,
-            "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT"
+            "Spry: INSUFFICIENT_OUTPUT_AMOUNT"
         );
 
         (uint112 reserve0, uint112 reserve1, ) = getReserves(pairID);
 
         require(
             amount0Out < reserve0 && amount1Out < reserve1,
-            "DeftDEX: INSUFFICIENT_LIQUIDITY"
+            "Spry: INSUFFICIENT_LIQUIDITY"
         );
 
         address token0 = pairData[pairID].tokens[0];
@@ -744,24 +744,24 @@ contract DeftDEX is DeftPairManager {
 
         require(
             to != token0 && to != token1 && to != address(this),
-            "DeftDEX: INVALID_TO"
+            "Spry: INVALID_TO"
         );
 
         if (amount0Out != 0) {
-            if (token0 == WXFI && unwrapable) {
-                IWXFI(WXFI).withdraw(amount0Out);
-                to.safeTransferXFI(amount0Out);
+            if (token0 == WETH && unwrapable) {
+                IWETH(WETH).withdraw(amount0Out);
+                to.safeTransferETH(amount0Out);
             } else token0.safeTransfer(to, amount0Out);
         }
         if (amount1Out != 0) {
-            if (token1 == WXFI && unwrapable) {
-                IWXFI(WXFI).withdraw(amount1Out);
-                to.safeTransferXFI(amount1Out);
+            if (token1 == WETH && unwrapable) {
+                IWETH(WETH).withdraw(amount1Out);
+                to.safeTransferETH(amount1Out);
             } else token1.safeTransfer(to, amount1Out);
         }
 
-        uint256 balance0 = ICFC20(token0).balanceOf(address(this));
-        uint256 balance1 = ICFC20(token1).balanceOf(address(this));
+        uint256 balance0 = IERC20(token0).balanceOf(address(this));
+        uint256 balance1 = IERC20(token1).balanceOf(address(this));
 
         // if (amount0Out != 0) balance0 -= amount0Out;
         // if (amount1Out != 0) balance1 -= amount1Out;
@@ -779,14 +779,14 @@ contract DeftDEX is DeftPairManager {
 
         require(
             ads.amount0In != 0 || ads.amount1In != 0,
-            "DeftDEX: INSUFFICIENT_INPUT_AMOUNT"
+            "Spry: INSUFFICIENT_INPUT_AMOUNT"
         );
 
         require(
             ((balance0 * 1000) - (ads.amount0In * correctedFee)) *
                 ((balance1 * 1000) - (ads.amount1In * correctedFee)) >=
                 (uint256(reserve0) * uint256(reserve1) * 1e6),
-            "DeftDEX: K"
+            "Spry: K"
         );
 
         _update(pairID, balance0, balance1, reserve0, reserve1);
