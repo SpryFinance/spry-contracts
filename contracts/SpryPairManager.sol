@@ -1,21 +1,21 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
-pragma solidity 0.8.20;
+pragma solidity 0.8.25;
 
 /*************************************************\
 |-*-*-*-*-*-*-*-*-*   IMPORTS   *-*-*-*-*-*-*-*-*-|
 \*************************************************/
 // Interfaces
-import {ICFC20Meta} from "./interfaces/ICFC20Meta.sol";
+import {IERC20Meta} from "./interfaces/IERC20Meta.sol";
 // Libraries
 import {UQ112x112} from "./libs/UQ112x112.sol";
 import {SmartFeeLib, ReserveInOut} from "./libs/SmartFeeLib.sol";
 // Contracts, Abstracts
 import {ModifiedERC6909} from "./ModifiedERC6909.sol";
 
-/// @title Deft pair manager contract
+/// @title Spry pair manager contract
 /// @notice This contract provides pair-related tasks at low-level
 /// @dev ERC6909 standard is intended to facilitate calculations
-abstract contract DeftPairManager is ModifiedERC6909 {
+abstract contract SpryPairManager is ModifiedERC6909 {
     using UQ112x112 for uint112;
     using UQ112x112 for uint224;
     using SmartFeeLib for ReserveInOut;
@@ -71,7 +71,7 @@ abstract contract DeftPairManager is ModifiedERC6909 {
     modifier pairMustExist(bytes32 pairID) {
         require(
             pairData[pairID].blockTimestampLast != 0,
-            "DeftDEX: PAIR_DOESNT_EXIST"
+            "Spry: PAIR_DOESNT_EXIST"
         );
         _;
     }
@@ -88,10 +88,10 @@ abstract contract DeftPairManager is ModifiedERC6909 {
         return
             string(
                 abi.encodePacked(
-                    ICFC20Meta(pairData[pairID].tokens[0]).symbol(),
+                    IERC20Meta(pairData[pairID].tokens[0]).symbol(),
                     "/",
-                    ICFC20Meta(pairData[pairID].tokens[1]).symbol(),
-                    " Deft Pair"
+                    IERC20Meta(pairData[pairID].tokens[1]).symbol(),
+                    " Spry Pair"
                 )
             );
     }
@@ -105,9 +105,9 @@ abstract contract DeftPairManager is ModifiedERC6909 {
         return
             string(
                 abi.encodePacked(
-                    ICFC20Meta(pairData[pairID].tokens[0]).symbol(),
+                    IERC20Meta(pairData[pairID].tokens[0]).symbol(),
                     "/",
-                    ICFC20Meta(pairData[pairID].tokens[1]).symbol(),
+                    IERC20Meta(pairData[pairID].tokens[1]).symbol(),
                     "-DP"
                 )
             );
@@ -139,7 +139,7 @@ abstract contract DeftPairManager is ModifiedERC6909 {
         address path0,
         address path1
     ) public view returns (uint256 amountOut, uint256 correctedFee) {
-        require(amountIn != 0, "DeftDEX: INSUFFICIENT_INPUT_AMOUNT");
+        require(amountIn != 0, "Spry: INSUFFICIENT_INPUT_AMOUNT");
 
         (bytes32 pairID, address token0, ) = _sortTokens(path0, path1);
         (uint256 reserveIn, uint256 reserveOut) = _sortReserves(
@@ -150,7 +150,7 @@ abstract contract DeftPairManager is ModifiedERC6909 {
 
         require(
             reserveIn != 0 && reserveOut != 0,
-            "DeftDEX: INSUFFICIENT_LIQUIDITY"
+            "Spry: INSUFFICIENT_LIQUIDITY"
         );
 
         (uint256 amount0OutNoFee, uint256 amount1OutNoFee) = (path0 == token0)
@@ -176,7 +176,7 @@ abstract contract DeftPairManager is ModifiedERC6909 {
         address path0,
         address path1
     ) public view returns (uint256 amountIn, uint256 correctedFee) {
-        require(amountOut != 0, "DeftDEX: INSUFFICIENT_OUTPUT_AMOUNT");
+        require(amountOut != 0, "Spry: INSUFFICIENT_OUTPUT_AMOUNT");
 
         (bytes32 pairID, address token0, ) = _sortTokens(path0, path1);
         (uint256 reserveIn, uint256 reserveOut) = _sortReserves(
@@ -187,7 +187,7 @@ abstract contract DeftPairManager is ModifiedERC6909 {
 
         require(
             reserveIn != 0 && reserveOut != 0,
-            "DeftDex: INSUFFICIENT_LIQUIDITY"
+            "Spry: INSUFFICIENT_LIQUIDITY"
         );
 
         (uint256 amount0OutNoFee, uint256 amount1OutNoFee) = (path0 == token0)
@@ -214,8 +214,8 @@ abstract contract DeftPairManager is ModifiedERC6909 {
         uint256 reserveA,
         uint256 reserveB
     ) public pure returns (uint256) {
-        require(amountA != 0, "DeftDEX: INSUFFICIENT_AMOUNT");
-        require(reserveA != 0 && reserveB != 0, "DeftDEX: INSUFFICIENT_LIQUIDITY");
+        require(amountA != 0, "Spry: INSUFFICIENT_AMOUNT");
+        require(reserveA != 0 && reserveB != 0, "Spry: INSUFFICIENT_LIQUIDITY");
 
         return (amountA * reserveB) / reserveA;
     }
@@ -254,7 +254,7 @@ abstract contract DeftPairManager is ModifiedERC6909 {
             if (amountBOptimal <= amountBDesired) {
                 require(
                     amountBOptimal >= amountBMin,
-                    "DeftDEX: INSUFFICIENT_B_AMOUNT"
+                    "Spry: INSUFFICIENT_B_AMOUNT"
                 );
                 (amountA, amountB) = (amountADesired, amountBOptimal);
             } else {
@@ -266,7 +266,7 @@ abstract contract DeftPairManager is ModifiedERC6909 {
                 assert(amountAOptimal <= amountADesired);
                 require(
                     amountAOptimal >= amountAMin,
-                    "DeftDEX: INSUFFICIENT_A_AMOUNT"
+                    "Spry: INSUFFICIENT_A_AMOUNT"
                 );
                 (amountA, amountB) = (amountAOptimal, amountBDesired);
             }
@@ -282,7 +282,7 @@ abstract contract DeftPairManager is ModifiedERC6909 {
     ) internal {
         require(
             balance0 <= type(uint112).max && balance1 <= type(uint112).max,
-            "DeftDEX: OVERFLOW"
+            "Spry: OVERFLOW"
         );
 
         uint32 blockTimestamp = uint32(block.timestamp % 2**32);
@@ -349,13 +349,13 @@ abstract contract DeftPairManager is ModifiedERC6909 {
             address token1
         )
     {
-        require(tokenA != tokenB, "DeftDEX: IDENTICAL_ADDRESSES");
+        require(tokenA != tokenB, "Spry: IDENTICAL_ADDRESSES");
 
         (token0, token1) = tokenA < tokenB
             ? (tokenA, tokenB)
             : (tokenB, tokenA);
 
-        require(token0 != address(0), "DeftDEX: ZERO_ADDRESS");
+        require(token0 != address(0), "Spry: ZERO_ADDRESS");
 
         pairID = keccak256(abi.encodePacked(token0, token1));
     }

@@ -1,29 +1,29 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+pragma solidity 0.8.25;
 
 import "forge-std/Test.sol";
-import {DeftDEX} from "../contracts/DeftDEX.sol";
+import {Spry} from "../contracts/Spry.sol";
 import {WETH9} from "./WETH.sol";
 
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 contract SmartFeeLibTest is Test {
 
-    DeftDEX public pair;
+    Spry public pair;
     ERC20Mock public token0;
     ERC20Mock public token1;
-    WETH9 public wxfi;
+    WETH9 public weth;
 
 
     function setUp() public {
 
-        wxfi = new WETH9();
-        vm.label(address(wxfi), "WXFI");
+        weth = new WETH9();
+        vm.label(address(weth), "WETH");
         token0 = new ERC20Mock();
         vm.label(address(token0), "Token0");
         token1 = new ERC20Mock();
         vm.label(address(token1), "Token1");
-        pair = new DeftDEX(address(this), address(wxfi));
+        pair = new Spry(address(this), address(weth));
         vm.label(address(pair), "Pair");
     }
 
@@ -70,24 +70,24 @@ contract SmartFeeLibTest is Test {
         console.log("The corrected fee is: ", fee);
     }
 
-    function testSwapExactXFIForToken() public {
+    function testSwapExactETHForToken() public {
 
         deal(address(this), 10 ether);
         deal(address(token0), address(this), 1e30);
-        deal(address(wxfi), address(this), 1e30);
+        deal(address(weth), address(this), 1e30);
         token0.approve(address(pair), type(uint256).max);
-        wxfi.approve(address(pair), type(uint256).max); 
+        weth.approve(address(pair), type(uint256).max); 
 
-        (,, uint liquidity) = pair.addLiquidityXFI{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
+        (,, uint liquidity) = pair.addLiquidityETH{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
         console.log("The liquidity added is: ", liquidity);
 
-        (uint balance, uint balance0) = (wxfi.balanceOf(address(pair)), token0.balanceOf(address(pair)));
+        (uint balance, uint balance0) = (weth.balanceOf(address(pair)), token0.balanceOf(address(pair)));
         console.log("WETH balance of pair is: ", balance);
         console.log("Token 0 balance of pair is: ", balance0);
 
         bytes memory data = 
-            abi.encodeWithSignature("swapExactXFIForToken(uint256,address,address,address,uint256)", 
-            1e16, address(wxfi), address(token0), address(this), block.timestamp + 10);
+            abi.encodeWithSignature("swapExactETHForToken(uint256,address,address,address,uint256)", 
+            1e16, address(weth), address(token0), address(this), block.timestamp + 10);
 
         (bool success, bytes memory returnData) = address(pair).call{value: 0.5 ether}(data);
         assertTrue(success, "Call not successfull");
@@ -99,24 +99,24 @@ contract SmartFeeLibTest is Test {
         console.log("The corrected fee is: ", fee);
     }
 
-    function testSwapTokenForExactXFI() public {
+    function testSwapTokenForExactETH() public {
 
         deal(address(this), 10 ether);
         deal(address(token0), address(this), 1e30);
-        deal(address(wxfi), address(this), 1e30);
+        deal(address(weth), address(this), 1e30);
         token0.approve(address(pair), type(uint256).max);
-        wxfi.approve(address(pair), type(uint256).max); 
+        weth.approve(address(pair), type(uint256).max); 
 
-        (,, uint liquidity) = pair.addLiquidityXFI{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
+        (,, uint liquidity) = pair.addLiquidityETH{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
         console.log("The liquidity added is: ", liquidity);
 
-        (uint balance, uint balance0) = (wxfi.balanceOf(address(pair)), token0.balanceOf(address(pair)));
+        (uint balance, uint balance0) = (weth.balanceOf(address(pair)), token0.balanceOf(address(pair)));
         console.log("WETH balance of pair is: ", balance);
         console.log("Token 0 balance of pair is: ", balance0);
 
         bytes memory data = 
-            abi.encodeWithSignature("swapTokenForExactXFI(uint256,uint256,address,address,address,uint256)", 
-            2e17, 1e18, address(token0), address(wxfi), address(this), block.timestamp + 10);
+            abi.encodeWithSignature("swapTokenForExactETH(uint256,uint256,address,address,address,uint256)", 
+            2e17, 1e18, address(token0), address(weth), address(this), block.timestamp + 10);
 
         (bool success, bytes memory returnData) = address(pair).call(data);
         assertTrue(success, "Call not successfull");
@@ -129,24 +129,24 @@ contract SmartFeeLibTest is Test {
 
     }
 
-    function testSwapExactTokenForXFI() public {
+    function testSwapExactTokenForETH() public {
 
         deal(address(this), 10 ether);
         deal(address(token0), address(this), 1e30);
-        deal(address(wxfi), address(this), 1e30);
+        deal(address(weth), address(this), 1e30);
         token0.approve(address(pair), type(uint256).max);
-        wxfi.approve(address(pair), type(uint256).max); 
+        weth.approve(address(pair), type(uint256).max); 
 
-        (,, uint liquidity) = pair.addLiquidityXFI{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
+        (,, uint liquidity) = pair.addLiquidityETH{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
         console.log("The liquidity added is: ", liquidity);
 
-        (uint balance, uint balance0) = (wxfi.balanceOf(address(pair)), token0.balanceOf(address(pair)));
+        (uint balance, uint balance0) = (weth.balanceOf(address(pair)), token0.balanceOf(address(pair)));
         console.log("WETH balance of pair is: ", balance);
         console.log("Token 0 balance of pair is: ", balance0);
 
         bytes memory data = 
-            abi.encodeWithSignature("swapExactTokenForXFI(uint256,uint256,address,address,address,uint256)", 
-            2e17, 1e16, address(token0), address(wxfi), address(this), block.timestamp + 10);
+            abi.encodeWithSignature("swapExactTokenForETH(uint256,uint256,address,address,address,uint256)", 
+            2e17, 1e16, address(token0), address(weth), address(this), block.timestamp + 10);
 
         (bool success, bytes memory returnData) = address(pair).call(data);
         assertTrue(success, "Call not successfull");
@@ -158,24 +158,24 @@ contract SmartFeeLibTest is Test {
         console.log("The corrected fee is: ", fee);  
     }
 
-    function testSwapXFIForExactToken() public {
+    function testSwapETHForExactToken() public {
 
         deal(address(this), 10 ether);
         deal(address(token0), address(this), 1e30);
-        deal(address(wxfi), address(this), 1e30);
+        deal(address(weth), address(this), 1e30);
         token0.approve(address(pair), type(uint256).max);
-        wxfi.approve(address(pair), type(uint256).max); 
+        weth.approve(address(pair), type(uint256).max); 
 
-        (,, uint liquidity) = pair.addLiquidityXFI{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
+        (,, uint liquidity) = pair.addLiquidityETH{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
         console.log("The liquidity added is: ", liquidity);
 
-        (uint balance, uint balance0) = (wxfi.balanceOf(address(pair)), token0.balanceOf(address(pair)));
+        (uint balance, uint balance0) = (weth.balanceOf(address(pair)), token0.balanceOf(address(pair)));
         console.log("WETH balance of pair is: ", balance);
         console.log("Token 0 balance of pair is: ", balance0);
 
         bytes memory data = 
-            abi.encodeWithSignature("swapXFIForExactToken(uint256,address,address,address,uint256)", 
-            2e17, address(wxfi), address(token0), address(this), block.timestamp + 10);
+            abi.encodeWithSignature("swapETHForExactToken(uint256,address,address,address,uint256)", 
+            2e17, address(weth), address(token0), address(this), block.timestamp + 10);
 
         (bool success, bytes memory returnData) = address(pair).call{value: 0.5 ether}(data);
         assertTrue(success, "Call not successfull");
@@ -211,23 +211,23 @@ contract SmartFeeLibTest is Test {
         assertEq(amount1, balance1 - 1000);
     }
 
-    function testRemoveLiquidityXFI() public {
+    function testRemoveLiquidityETH() public {
 
         deal(address(this), 10 ether);
         deal(address(token0), address(this), 1e30);
-        deal(address(wxfi), address(this), 1e30);
+        deal(address(weth), address(this), 1e30);
         token0.approve(address(pair), type(uint256).max);
-        wxfi.approve(address(pair), type(uint256).max); 
+        weth.approve(address(pair), type(uint256).max); 
 
-        (,, uint liquidity) = pair.addLiquidityXFI{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
+        (,, uint liquidity) = pair.addLiquidityETH{value: 1 ether}(address(token0), 1e18, 5e17, 1e16, address(this), block.timestamp + 10);
         console.log("The liquidity added is: ", liquidity);
 
-        (uint balance, uint balance0) = (wxfi.balanceOf(address(pair)), token0.balanceOf(address(pair)));
+        (uint balance, uint balance0) = (weth.balanceOf(address(pair)), token0.balanceOf(address(pair)));
         console.log("WETH balance of pair is: ", balance);
         console.log("Token 0 balance of pair is: ", balance0);
 
         (uint amount, uint amount0) = 
-            pair.removeLiquidityXFI(address(token0), liquidity, 1e16, 1e16, address(this), block.timestamp + 10);
+            pair.removeLiquidityETH(address(token0), liquidity, 1e16, 1e16, address(this), block.timestamp + 10);
 
         console.log("WETH amount is: ", amount);
         console.log("Token 0 amount is: ", amount0);
