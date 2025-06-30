@@ -14,12 +14,12 @@ import {TransferHelper} from "./libs/TransferHelper.sol";
 import {SpryPairManager} from "./SpryPairManager.sol";
 
 /*
-    __________________________________
-    ___  __ \__  ____/__  ____/__  __/
-    __  / / /_  __/  __  /_   __  /   
-    _  /_/ /_  /___  _  __/   _  /    
-    /_____/ /_____/  /_/      /_/     
-                                    
+     ____  ____  ______   __
+    / ___||  _ \|  _ \ \ / /
+    \___ \| |_) | |_) \ V /
+     __) |  __/ | _ <  | |
+    |____/|_|   |_| \_\|_|
+
     Spry is a decentralized and secure AMM with uniform liquidity and variable LP fees. 
     Spry reimagines impermanent loss, converting it into a benefit for LPs. This innovative approach mitigates 
     the full profit potential for arbitrageurs, ensuring benefits for LP even in volatile market conditions.
