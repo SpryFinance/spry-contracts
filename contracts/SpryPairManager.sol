@@ -108,7 +108,7 @@ abstract contract SpryPairManager is ModifiedERC6909 {
                     IERC20Meta(pairData[pairID].tokens[0]).symbol(),
                     "/",
                     IERC20Meta(pairData[pairID].tokens[1]).symbol(),
-                    "-DP"
+                    "-SP"
                 )
             );
     }
