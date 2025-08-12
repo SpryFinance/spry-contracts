@@ -47,4 +47,4 @@ By adopting ERC6909, Spry sets itself apart as an advanced platform capable of h
 
 ***For more information, consider reading the whitepaper provided in this [link](https://github.com/SpryFinance/spry-contracts/blob/main/assets/Spry-Whitepaper.pdf).***
 
-### Deployed SmartContract Address: ``````
+### Deployed SmartContract Address: ```0xD6A2F0bAb5d2C9Bbb3d68362BD5F25409827936b```
