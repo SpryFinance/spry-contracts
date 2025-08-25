@@ -21,6 +21,7 @@ contract SmartFeeLibTest is Test {
         token1 = new ERC20Mock();
         vm.label(address(token1), "Token1");
         pair = new Spry(address(this), address(weth));
+        pair.setFeeTo(address(this));
         vm.label(address(pair), "Pair");
     }
 
@@ -30,17 +31,19 @@ contract SmartFeeLibTest is Test {
         token0.approve(address(pair), type(uint256).max);
         token1.approve(address(pair), type(uint256).max);
 
-        (, , uint liquidity) = pair.addLiquidity(
+        (uint256 amountA, uint256 amountB, uint liquidity) = pair.addLiquidity(
             address(token0),
             address(token1),
-            1e19,
-            1e19,
-            1e19,
-            1e19,
+            2e18,
+            1e18,
+            1,
+            1,
             address(this),
             block.timestamp + 10
         );
         console.log("The liquidity added is: ", liquidity);
+        console.log("amountA: ", amountA);
+        console.log("amountB: ", amountB);
     }
 
     // function testSwapTokenForExactToken() public {
