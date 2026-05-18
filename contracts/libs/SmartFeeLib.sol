@@ -43,12 +43,20 @@ library SmartFeeLib {
         // For the very first swap if the reserves are 0, then just return 0
         if (reserve0 == 0 || reserve1 == 0) return 0;
 
-        uint256 price_init = (1000000 * reserve0) / reserve1;
-        uint256 price_final = r.amount0Out != 0
-            ? (1000000 * (r.amount0Out + reserve0)) / reserve1
-            : (1000000 * reserve0) / (r.amount1Out + reserve1);
-
-        int256 delta = int256((1000 * price_final) / price_init) - 1000;
+        // delta = 1000 * (price_final / price_init - 1)
+        //
+        // Algebraically reduces to a single division that does not depend on
+        // the opposite reserve, which avoids a div-by-zero when reserves have
+        // extreme ratios (e.g., mismatched-decimal pools where the original
+        // (1e6 * reserve0) / reserve1 truncates to 0).
+        int256 delta;
+        if (r.amount0Out != 0) {
+            delta = int256((1000 * r.amount0Out) / reserve0);
+        } else if (r.amount1Out != 0) {
+            delta = -int256((1000 * r.amount1Out) / (reserve1 + r.amount1Out));
+        } else {
+            return 3;
+        }
 
         if (delta >= LOWER_THRESHOLD_LIMIT && delta <= UPPER_THRESHOLD_LIMIT)
             return 3;
