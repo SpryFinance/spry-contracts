@@ -2,3 +2,7 @@ ds-test/=lib/forge-std/lib/ds-test/src/
 forge-std/=lib/forge-std/src/
 @prb/math/=lib/prb-math/
 @openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/
+v4-core/=lib/v4-core/
+@uniswap/v4-core/=lib/v4-core/
+v4-periphery/=lib/v4-periphery/
+solmate/=lib/v4-core/lib/solmate/
