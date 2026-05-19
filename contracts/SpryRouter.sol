@@ -19,12 +19,13 @@ import {SafeTransfer} from "./libs/SafeTransfer.sol";
 import {ModifiedERC6909} from "./ModifiedERC6909.sol";
 
 /// @title SpryRouter
-/// @notice Periphery router for swaps on V4 Spry pools. Exposes a V2-style
-///         API (exact-in / exact-out, slippage and deadline guards, native
-///         ETH first-class) plus unbounded multi-hop. Every external call
+/// @notice Periphery router for swaps and liquidity management on Spry pools.
+///         Exposes a compact, ergonomic API (exact-in / exact-out single-hop,
+///         unbounded multi-hop, add/remove liquidity), slippage and deadline
+///         guards, and first-class native-ETH support. Every external call
 ///         translates into a single PoolManager.unlock callback. Also tracks
-///         per-user full-range LP shares as ERC6909 claims so the V2-style
-///         add/removeLiquidity UX is preserved.
+///         per-user full-range LP shares as ERC6909-shaped per-id balances
+///         so add/removeLiquidity round-trips behave like a standard router.
 contract SpryRouter is IUnlockCallback, ModifiedERC6909 {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

@@ -1006,7 +1006,6 @@ from technical developments of decentralized crypto exchanges," SSRN
 
 ---
 
-*Document version*: V4 — current. The on-chain code described herein is at
-the tip of the `feat/v4-migration` branch of the Spry contracts repository.
-The whitepaper and the code are released under GPL-3.0-or-later (see
-`LICENSE`).
+*Document version*: current. The on-chain code described herein lives at
+the tip of the `main` branch of the Spry contracts repository. The
+whitepaper and the code are released under GPL-3.0-or-later (see `LICENSE`).

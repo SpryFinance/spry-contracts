@@ -21,7 +21,7 @@ contracts/
 ├── ModifiedERC6909.sol           Per-(poolId, holder) LP-share ledger inherited by SpryRouter
 └── libs/
     ├── SmartFeeLib.sol           Three-zone dynamic-fee curve (safe / alert / danger)
-    ├── VirtualReserves.sol       (sqrtPriceX96, liquidity) → V2-equivalent (R0, R1)
+    ├── VirtualReserves.sol       (sqrtPriceX96, liquidity) → uniform-liquidity (R0, R1)
     └── SafeTransfer.sol          ERC20 helpers tolerant of non-standard tokens
 
 script/
@@ -76,21 +76,21 @@ That's it — no custom router on the user side is required; any V4-compatible
 router can swap against a Spry pool and the hook will price every swap
 correctly.
 
-## Why a hook, not a fork?
+## Why a hook?
 
-Earlier iterations of Spry were stand-alone V2-style AMMs. Recasting the
-mechanism as a V4 hook means:
+Delivering Spry as a Uniswap V4 hook rather than a standalone AMM means:
 
 - Zero pool-storage / swap-math attack surface — those live in V4 core, which
   is already widely audited and deployed.
 - First-class native ETH, multi-hop, ERC-6909 claim tokens, and flash
-  accounting for free.
+  accounting come for free.
 - Pools are routable from every V4-aware router and aggregator on day one.
 
-Spry uses V4 only in **full-range** mode (`tickLower = MIN_USABLE_TICK`,
-`tickUpper = MAX_USABLE_TICK`), which reduces the math to V2's
-`x · y = k` at the current price and preserves the SmartFee derivation
-unchanged.
+Spry pools operate in **full-range** mode (`tickLower = MIN_USABLE_TICK`,
+`tickUpper = MAX_USABLE_TICK`), which makes liquidity uniform across the
+entire price range. Under that constraint the swap math reduces to the
+constant-product `x · y = k` at the current price, which is the regime the
+SmartFee derivation operates on.
 
 ## Status
 
@@ -100,8 +100,8 @@ unchanged.
 - **Not yet externally audited.** Do not deploy with material user funds
   until an independent audit is complete. See the whitepaper, section
   *"Pre-deployment checklist"*, for the recommended steps.
-- **No mainnet deployment.** This branch supersedes any previously-published
-  Spry addresses.
+- **No mainnet deployment.** Authoritative addresses, when they exist, will
+  be published in this README alongside the audit report and deployment tag.
 
 ## License
 

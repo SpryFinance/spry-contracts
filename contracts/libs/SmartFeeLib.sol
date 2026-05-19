@@ -8,46 +8,51 @@ import {FullMath} from "v4-core/src/libraries/FullMath.sol";
 import {VirtualReserves} from "./VirtualReserves.sol";
 
 /// @title SmartFeeLib
-/// @notice V4 adaptation of Spry's dynamic-fee curve. The math is identical
-///         to the V2 SmartFeeLib (post the div-by-zero fix) — same constants,
-///         same three zones — but the input is the V4 pool slot0 + the swap
-///         intent instead of V2 storage reserves + output amounts.
-/// @dev    Returned fee is in **pips** (V4 convention, 1e6 = 100%). The V2
-///         library returned the fee in thousandths (V2 convention, 1000 = 100%);
-///         this library multiplies by 1000 to translate. Callers wishing to
-///         pass the result back through V4's hook return channel should OR
-///         in `LPFeeLibrary.OVERRIDE_FEE_FLAG (0x400000)`.
+/// @notice Spry's dynamic fee curve. Given a pool's current state and a
+///         pending swap, returns the LP fee to charge for that swap. The
+///         curve has three zones — safe, alert, danger — keyed off a
+///         price-shift parameter delta computed from the swap's amount and
+///         the pool's virtual reserves:
+///           safe   : delta in [-250,  334]            -> 3 bps
+///           alert  : delta in [-500, -250) U (334, 1000] -> linear ramp to 20 bps
+///           danger : delta in [-1000,-500) U (1000, 5000] -> exponential ramp to 50 bps
+///           cap    : everything else                  -> 55 bps
+///         All deltas are in thousandths (1000 = +100% price shift).
+/// @dev    Returned fee is in V4 dynamic-fee pips (1_000_000 = 100%). Callers
+///         passing the result back through V4's hook return channel must OR
+///         in `LPFeeLibrary.OVERRIDE_FEE_FLAG (0x400000)` before returning.
 library SmartFeeLib {
     using SafeCast for *;
 
-    // Zone boundaries — identical to V2 SmartFeeLib
+    // Zone boundaries (delta is expressed in thousandths)
     int32 public constant LOWER_THRESHOLD_LIMIT = -250;
     int32 public constant UPPER_THRESHOLD_LIMIT = 334;
     int32 public constant LOWER_STOP_LIMIT = -500;
     int32 public constant UPPER_STOP_LIMIT = 1000;
 
-    // Linear regression coefficients
+    // Linear-zone regression coefficients
     int64 public constant LINEAR_REGRESSION_BASIS_POINT = 1_000_000;
     int64 public constant A_LEFT = -68_000;
     int64 public constant B_LEFT = -14_000;
     int64 public constant A_RIGHT = 25_370;
     int64 public constant B_RIGHT = -5_370;
 
-    // Exponential regression coefficients (PRB-Math SD59x18-scaled)
+    // Danger-zone exponential coefficients (PRB-Math SD59x18-scaled)
     int112 public constant A_LEFT_EXP = 8.0e18;
     int112 public constant B_LEFT_EXP = -1.8325814637483102e18;
     int112 public constant A_RIGHT_EXP = 15.905414575341013e18;
     int112 public constant B_RIGHT_EXP = 0.22907268296853878e18;
 
-    /// @notice V2 fee bps → V4 fee pips. 3 bps (0.3%) → 3000 pips.
-    uint24 internal constant V2_TO_V4_SCALE = 1000;
+    /// @notice Scale factor from internal bps-of-1000 to V4 pips (1_000_000).
+    ///         3 (= 0.3%) -> 3_000 pips; 55 (= 5.5%) -> 55_000 pips.
+    uint24 internal constant BPS_TO_PIPS = 1000;
 
-    /// @param sqrtPriceX96  pool's current price as Q64.96
-    /// @param liquidity     pool's in-range liquidity (full-range == total)
-    /// @param zeroForOne    true if swap is token0 → token1
+    /// @param sqrtPriceX96   pool's current price as Q64.96
+    /// @param liquidity      pool's in-range liquidity (full-range == total)
+    /// @param zeroForOne     true if swap is token0 -> token1
     /// @param amountSpecified V4 swap amountSpecified: negative = exactIn,
-    ///                        positive = exactOut. Magnitude is the token
-    ///                        amount.
+    ///                       positive = exactOut. Magnitude is the token
+    ///                       amount.
     /// @return fee V4 dynamic fee in pips (0..1_000_000). Caller must OR in
     ///             OVERRIDE_FEE_FLAG when returning from beforeSwap.
     function getDynamicFee(
@@ -60,21 +65,23 @@ library SmartFeeLib {
             VirtualReserves.fromState(sqrtPriceX96, liquidity);
 
         if (reserve0 == 0 || reserve1 == 0 || amountSpecified == 0) {
-            return 3 * V2_TO_V4_SCALE;
+            return 3 * BPS_TO_PIPS;
         }
 
-        // Translate V4 SwapParams into V2 SmartFee inputs (amount0Out / amount1Out).
+        // Translate V4 SwapParams into the (amount0Out, amount1Out) shape
+        // used by the delta formula below; exactly one of the two is non-zero.
         (uint256 amount0Out, uint256 amount1Out) =
             _outputAmounts(reserve0, reserve1, zeroForOne, amountSpecified);
 
-        uint256 v2Fee = _getCorrectedFeeV2(reserve0, reserve1, amount0Out, amount1Out);
-        return uint24(v2Fee) * V2_TO_V4_SCALE;
+        uint256 feeBps = _getCorrectedFee(reserve0, reserve1, amount0Out, amount1Out);
+        return uint24(feeBps) * BPS_TO_PIPS;
     }
 
-    /// @dev Derives token0Out / token1Out so we can re-use V2's delta formula.
-    ///      For exactIn we apply the standard UniswapV2 no-fee output formula;
-    ///      for exactOut we use amountSpecified directly. Either way only one
-    ///      of (amount0Out, amount1Out) is non-zero, mirroring the V2 contract.
+    /// @dev Derives a single output amount from the V4 SwapParams. For
+    ///      exact-input swaps it applies the no-fee constant-product output
+    ///      formula to derive the implied output; for exact-output swaps it
+    ///      uses the magnitude directly. Exactly one of the returned values
+    ///      is non-zero.
     function _outputAmounts(
         uint256 reserve0,
         uint256 reserve1,
@@ -103,11 +110,11 @@ library SmartFeeLib {
         }
     }
 
-    /// @dev Equivalent of V2 SmartFeeLib.getCorrectedFee inlined here so this
-    ///      library stays self-contained and so the V4 wrapper does not need
-    ///      to drag in the legacy ReserveInOut struct. Math is byte-for-byte
-    ///      identical to the post-fix V2 implementation.
-    function _getCorrectedFeeV2(
+    /// @dev Three-zone fee dispatch. delta is computed directly from one
+    ///      reserve and the swap amount (never dividing by the opposite
+    ///      reserve), which is well-defined at every reserve ratio.
+    ///      Returns the fee in bps of 1000 (0..55).
+    function _getCorrectedFee(
         uint256 reserve0,
         uint256 reserve1,
         uint256 amount0Out,
