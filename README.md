@@ -1,50 +1,108 @@
-# <img src="https://github.com/SpryFinance/spry-contracts/blob/main/assets/SPRY-Logo.png"  width="28px" height="28px"> Spry
+# <img src="assets/SPRY-Logo.png" width="28" height="28"> Spry
 
-Spry is a decentralized exchange (DEX) designed to address the significant issue of impermanent loss in uniform liquidity constant product automated market makers (AMMs), a prevalent concern for liquidity providers (LPs) in traditional DEXs. Spry introduces innovative features such as uniform liquidity and an advanced dynamic fee calculation mechanism to mitigate impermanent loss, creating a more secure and profitable environment for LPs. Additionally, Spry ensures a fair and efficient trading experience for liquidity takers (LTs), balancing the needs of all participants. By addressing these critical challenges and leveraging cutting-edge technology, Spry sets a new standard in the decentralized finance (DeFi) space, fostering greater confidence and participation among users.
-The main aim here is to keep the Liquidity Takers (LTs) incentivized as well as protect the Liquidity Providers (LPs) from harsh price changes which will lead to impermanent loss. Considering the previous research and studies, the goal of this research is to reduce and optimize the impermanent loss which is a feature of Constant Product Market Makers (CPMM), rather than completely omitting the impermanent loss or making a profit from it. 
+**A dynamic-fee Uniswap V4 hook that protects liquidity providers from
+arbitrage-driven impermanent loss.**
 
-**Spry shields liquidity providers (LPs) from the adverse effects of drastic price changes caused by arbitrageurs, enabling them to earn more than just static fees. This protective mechanism ensures that LPs can enjoy enhanced profitability and a more stable investment environment.**
+Spry is a small periphery (one hook + one router + four libraries) deployed
+on top of the canonical Uniswap V4 `PoolManager`. Pools that use the Spry
+hook charge takers a fee that scales with how much each individual swap
+shifts the pool's price — small swaps pay the standard 0.30 %, arbitrage-
+sized swaps pay up to 5.5 %. The excess goes back to LPs through V4's normal
+fee path. The economic mechanism is described in detail in
+[`assets/Spry-Whitepaper.md`](assets/Spry-Whitepaper.md).
 
-## Smart Fee Calculation Mechanism
-The core concept of Spry's algorithm is finding the new coordination of the pool for a possible swap request. After calculating the delta and finding the new coordinate, the system now autonomously
-decides whether to alter the swap fee to protect the LPs reaching for an impermanent loss state. The delta intervals for fee calculations are defined as the impermanent loss plot. 
-These intervals are demonstrated in the figure below:
+## What's in this repo
 
-<img src="https://github.com/SpryFinance/spry-contracts/blob/main/assets/algo-fig.png" width="50%" height="40%"> 
+```
+contracts/
+├── SpryHook.sol                  IHooks impl, returns dynamic fee from beforeSwap
+├── SpryRouter.sol                Periphery router: single + multi-hop swap, add / remove liquidity
+├── HookMiner.sol                 CREATE2 salt miner for the hook's permission bits
+├── ModifiedERC6909.sol           Per-(poolId, holder) LP-share ledger inherited by SpryRouter
+└── libs/
+    ├── SmartFeeLib.sol           Three-zone dynamic-fee curve (safe / alert / danger)
+    ├── VirtualReserves.sol       (sqrtPriceX96, liquidity) → V2-equivalent (R0, R1)
+    └── SafeTransfer.sol          ERC20 helpers tolerant of non-standard tokens
 
-Based on the plot we can define 3 zones:
-1. Safe Zone (**$\large -0.25 < \delta < 0.33$**)
-2. Alert Zone (**$\large -0.50 < \delta < -0.25 \ | \ \large 0.33 < \delta < 1.00$**)
-3. Danger Zone (**$\large -1.00 < \delta < -0.50 \ | \ \delta > 1.00$**)
+script/
+└── DeploySpry.s.sol              CREATE2 deploy script that mines the hook salt
 
-Based on the different characteristics of these regions, different fee calculations are considered. In the Safe Zone, the fee is the same as UniswapV2, which is 3 in Basis point of 1000.
-In the Alert Zone, a linear regression method is used that gradually increases the fee from 3 to 20 based on the swap parameters. Finally, in the Danger Zone, an exponential scheme is adopted.
-As the reserves and spot prices drastically change during a swap which pushes the state coordinates to such a region, the corresponding fee calculation differs from the two abovementioned regions.
-Considering this fact, an exponential regression is used that changes the fee from 20 to 50 in the basis point.
-The entire algorithm is also presented in this flowchart:
+test/
+├── SmartFeeLibTest                19 tests   fee curve, every zone, fuzz bounds
+├── SpryHookTest                    8 tests   integration via PoolModifyLiquidityTest + PoolSwapTest
+├── SpryHookCoverageTest           10 tests   no-op IHooks entry points + access control
+├── SpryHookZonesTest              10 tests   each fee zone via SpryHook.beforeSwap
+├── SpryRouterSingleTest            7 tests   single-hop happy paths + reverts
+├── SpryRouterMultiTest             6 tests   multi-hop atomic paths
+├── SpryRouterLiquidityTest         7 tests   add / remove + slippage + deadline
+├── SpryRouterBranchTest            4 tests   native ETH refund / invalid callback tag
+├── SpryRouterERC6909Test           9 tests   LP-share transfer / approve / burn-by-recipient
+├── ERC6909Test                    14 tests   ModifiedERC6909 primitives via mock
+├── HookMinerTest                   5 tests   salt mining, CREATE2 verification
+├── SafeTransferTest               11 tests   USDT-style, false-return, reverting, ETH rejecter
+├── ParityTest                      6 tests   native ETH pool, multi-pool isolation, V4 lock
+├── ForkTest                        3 tests   live PoolManager (skips when FORK_RPC_URL unset)
+└── Invariants                      4 tests   handler-driven fuzz, 128k random ops, 0 violations
 
-<img src="https://github.com/SpryFinance/spry-contracts/blob/main/assets/flow.png" width="60%" height="60%"> 
+Total: 123 tests / 15 suites
+```
 
-## ERC6909 Application
+## Build & test
 
-Spry leverages the [**ERC6909** standard](https://eips.ethereum.org/EIPS/eip-6909), which is particularly well-suited for managing multiple tokens efficiently within a decentralized exchange (DEX environment). ERC6909 introduces a powerful framework that enables seamless interaction and handling of multiple token types under a single contract, simplifying the complexities typically associated with multi-token management.
+```bash
+forge install              # pulls v4-core, v4-periphery, openzeppelin, prb-math, forge-std
+forge build                # compiles against canonical V4
+forge test                 # runs the whole suite
+forge coverage             # line/branch/function coverage (no via_ir for accuracy)
+```
 
-Here’s how ERC6909 benefits Spry:
+The repository uses Foundry. The default profile pins `evm_version = "cancun"`
+and turns `via_ir` off so `forge coverage` produces accurate line numbers.
 
-1. **Unified Token Management**: ERC6909 allows Spry to handle multiple tokens within one contract, reducing the overhead and operational complexity of managing multiple token standards separately.
+## How a pool uses Spry
 
-2. **Efficient Transactions**: By consolidating token operations, ERC6909 streamlines the process of transferring, trading, and interacting with tokens. This leads to fewer contract calls, lower gas fees, and faster transaction times, which are critical for enhancing the user experience on Spry.
+1. Deploy `SpryHook` at an address whose low 14 bits equal
+   `Hooks.BEFORE_SWAP_FLAG = 0x80`. Use `script/DeploySpry.s.sol`, which mines
+   the CREATE2 salt automatically against the canonical `PoolManager` address
+   for the target chain.
+2. Initialize a pool whose `PoolKey.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG`
+   (`0x800000`) and `PoolKey.hooks = SpryHook`. The dynamic-fee flag is what
+   tells V4 to consult the hook for the fee on every swap.
+3. Add liquidity through `SpryRouter.addLiquidity` (full-range positions only)
+   or, equivalently, mint a full-range position through the canonical V4
+   `PositionManager`.
 
-3. **Improved Liquidity Management**: The standard's ability to natively support multiple token types allows Spry to offer better liquidity management across diverse assets. Users can seamlessly swap between different token classes, increasing the flexibility of the platform and providing more trading options.
+That's it — no custom router on the user side is required; any V4-compatible
+router can swap against a Spry pool and the hook will price every swap
+correctly.
 
-4. **Enhanced Interoperability**: With ERC6909, Spry can interact with a wide range of token types and protocols, making it easier to integrate with other decentralized finance (DeFi) platforms. This interoperability enhances the ecosystem’s connectivity and broadens the scope of token interactions that Spry can support.
+## Why a hook, not a fork?
 
-5. **Simplified Smart Contract Architecture**: ERC6909 reduces the need for deploying multiple token contracts, simplifying the overall architecture of the Spry platform. This not only minimizes the risk of smart contract bugs but also ensures easier auditing and maintenance of the platform.
+Earlier iterations of Spry were stand-alone V2-style AMMs. Recasting the
+mechanism as a V4 hook means:
 
-By adopting ERC6909, Spry sets itself apart as an advanced platform capable of handling the complex needs of modern decentralized exchanges while ensuring efficiency, scalability, and security in managing multiple token types.
+- Zero pool-storage / swap-math attack surface — those live in V4 core, which
+  is already widely audited and deployed.
+- First-class native ETH, multi-hop, ERC-6909 claim tokens, and flash
+  accounting for free.
+- Pools are routable from every V4-aware router and aggregator on day one.
 
-## White-paper
+Spry uses V4 only in **full-range** mode (`tickLower = MIN_USABLE_TICK`,
+`tickUpper = MAX_USABLE_TICK`), which reduces the math to V2's
+`x · y = k` at the current price and preserves the SmartFee derivation
+unchanged.
 
-***For more information, consider reading the whitepaper provided in this [link](https://github.com/SpryFinance/spry-contracts/blob/main/assets/Spry-Whitepaper.pdf).***
+## Status
 
-### Deployed SmartContract Address: ```0xD6A2F0bAb5d2C9Bbb3d68362BD5F25409827936b```
+- **123 unit + integration + invariant tests passing**, ~100 % line and
+  function coverage on every library; invariants verified across 128 000
+  random handler operations with zero violations.
+- **Not yet externally audited.** Do not deploy with material user funds
+  until an independent audit is complete. See the whitepaper, section
+  *"Pre-deployment checklist"*, for the recommended steps.
+- **No mainnet deployment.** This branch supersedes any previously-published
+  Spry addresses.
+
+## License
+
+GPL-3.0-or-later (see `LICENSE`).
