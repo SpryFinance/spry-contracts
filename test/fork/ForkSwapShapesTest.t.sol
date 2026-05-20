@@ -16,6 +16,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title ForkSwapShapesTest
 /// @notice End-to-end coverage of swap and liquidity shapes that the
@@ -64,7 +65,7 @@ contract ForkSwapShapesTest is Test {
         vm.createSelectFork(rpc);
 
         manager = IPoolManager(vm.envAddress("V4_POOL_MANAGER"));
-        router = new SpryRouter(manager);
+        router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
 
         // Three ERC20 mocks for multi-hop + ETH-pair coverage.
         ERC20Mock a = new ERC20Mock();

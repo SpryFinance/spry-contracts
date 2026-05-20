@@ -8,6 +8,7 @@ import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 
 import {SpryHook} from "../contracts/SpryHook.sol";
 import {SpryRouter} from "../contracts/SpryRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {HookMiner} from "./HookMiner.sol";
 
 /// @title DeploySpry
@@ -47,7 +48,7 @@ contract DeploySpry is Script {
         vm.startBroadcast();
         hook = new SpryHook{salt: salt}(manager);
         require(address(hook) == predicted, "Deploy: hook address mismatch");
-        router = new SpryRouter(manager);
+        router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
         vm.stopBroadcast();
 
         console.log("SpryHook deployed at:    ", address(hook));

@@ -12,6 +12,7 @@ import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @notice Stateful fuzz handler. Forge calls these public functions with
 ///         random args; each one bounds inputs to a sane range, executes

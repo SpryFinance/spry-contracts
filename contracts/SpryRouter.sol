@@ -22,6 +22,8 @@ import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
 
 import {Multicall_v4} from "v4-periphery/src/base/Multicall_v4.sol";
+import {Permit2Forwarder} from "v4-periphery/src/base/Permit2Forwarder.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title SpryRouter
 /// @notice Periphery router for swaps and liquidity management on Spry pools.
@@ -35,7 +37,7 @@ import {Multicall_v4} from "v4-periphery/src/base/Multicall_v4.sol";
 ///         ERC20 tolerance) are pulled in from solmate rather than rolled
 ///         by hand — both are widely audited and already part of the V4
 ///         core's dependency tree (PoolManager itself inherits ERC6909).
-contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
+contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using SafeTransferLib for ERC20;
@@ -54,6 +56,10 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
     error InsufficientAAmount();
     error InsufficientBAmount();
     error InsufficientLiquidity();
+    /// @notice Permit2 cannot mediate native-ETH transfers — it only knows
+    ///         about ERC20s. Raised when a *ViaPermit2 entry point is asked
+    ///         to settle a native-ETH leg.
+    error Permit2NativeUnsupported();
 
     // Tags for the unlock callback's tagged-union payload.
     uint8 internal constant TAG_SINGLE = 1;
@@ -75,6 +81,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
         uint256 slippageBound;
         address payer;
         address recipient;
+        bool usePermit2;
     }
 
     /// @notice One hop in a multi-hop path. `intermediateCurrency` is the
@@ -95,6 +102,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
         uint256 amountIn;
         address payer;
         address recipient;
+        bool usePermit2;
     }
 
     /// @notice Multi-hop exact-output payload. The forward `path` is the
@@ -109,6 +117,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
         uint256 amountOut;
         address payer;
         address recipient;
+        bool usePermit2;
     }
 
     struct LiquidityData {
@@ -120,11 +129,12 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
         uint256 amount1Min;
         address payer;
         address recipient;
+        bool usePermit2;
     }
 
     IPoolManager public immutable POOL_MANAGER;
 
-    constructor(IPoolManager _poolManager) {
+    constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2) Permit2Forwarder(_permit2) {
         POOL_MANAGER = _poolManager;
     }
 
@@ -206,7 +216,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
             amountSpecified: -int256(amountIn),
             slippageBound: amountOutMin,
             payer: msg.sender,
-            recipient: recipient
+            recipient: recipient,
+            usePermit2: false
         });
         amountOut = abi.decode(
             POOL_MANAGER.unlock(abi.encode(TAG_SINGLE, abi.encode(data))),
@@ -232,7 +243,70 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
             amountSpecified: int256(amountOut),
             slippageBound: amountInMax,
             payer: msg.sender,
-            recipient: recipient
+            recipient: recipient,
+            usePermit2: false
+        });
+        amountIn = abi.decode(
+            POOL_MANAGER.unlock(abi.encode(TAG_SINGLE, abi.encode(data))),
+            (uint256)
+        );
+        if (amountIn > amountInMax) revert ExcessiveInput();
+        _refundExcessETH(priorBal);
+    }
+
+    /// @notice Permit2 variant of swapExactInputSingle. Pulls the input
+    ///         token via Permit2.transferFrom instead of the token's own
+    ///         allowance ledger, so the user only needs the standard
+    ///         one-time `token.approve(Permit2, max)` plus a Permit2
+    ///         signature (typically set via router.permit() in a multicall
+    ///         right before this call).
+    function swapExactInputSingleViaPermit2(
+        PoolKey calldata key,
+        bool zeroForOne,
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address recipient,
+        uint256 deadline
+    ) external payable ensure(deadline) returns (uint256 amountOut) {
+        uint256 priorBal = _ethPriorBalance();
+        SingleSwapData memory data = SingleSwapData({
+            kind: Kind.ExactInputSingle,
+            key: key,
+            zeroForOne: zeroForOne,
+            amountSpecified: -int256(amountIn),
+            slippageBound: amountOutMin,
+            payer: msg.sender,
+            recipient: recipient,
+            usePermit2: true
+        });
+        amountOut = abi.decode(
+            POOL_MANAGER.unlock(abi.encode(TAG_SINGLE, abi.encode(data))),
+            (uint256)
+        );
+        if (amountOut < amountOutMin) revert InsufficientOutput();
+        _refundExcessETH(priorBal);
+    }
+
+    /// @notice Permit2 variant of swapExactOutputSingle. See
+    ///         swapExactInputSingleViaPermit2 for the prerequisites.
+    function swapExactOutputSingleViaPermit2(
+        PoolKey calldata key,
+        bool zeroForOne,
+        uint256 amountOut,
+        uint256 amountInMax,
+        address recipient,
+        uint256 deadline
+    ) external payable ensure(deadline) returns (uint256 amountIn) {
+        uint256 priorBal = _ethPriorBalance();
+        SingleSwapData memory data = SingleSwapData({
+            kind: Kind.ExactOutputSingle,
+            key: key,
+            zeroForOne: zeroForOne,
+            amountSpecified: int256(amountOut),
+            slippageBound: amountInMax,
+            payer: msg.sender,
+            recipient: recipient,
+            usePermit2: true
         });
         amountIn = abi.decode(
             POOL_MANAGER.unlock(abi.encode(TAG_SINGLE, abi.encode(data))),
@@ -266,7 +340,37 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
             path: path,
             amountIn: amountIn,
             payer: msg.sender,
-            recipient: recipient
+            recipient: recipient,
+            usePermit2: false
+        });
+        amountOut = abi.decode(
+            POOL_MANAGER.unlock(abi.encode(TAG_MULTI_IN, abi.encode(data))),
+            (uint256)
+        );
+        if (amountOut < amountOutMin) revert InsufficientOutput();
+        _refundExcessETH(priorBal);
+    }
+
+    /// @notice Permit2 variant of swapExactInput. See
+    ///         swapExactInputSingleViaPermit2 for the prerequisites.
+    function swapExactInputViaPermit2(
+        Currency currencyIn,
+        PathHop[] calldata path,
+        uint256 amountIn,
+        uint256 amountOutMin,
+        address recipient,
+        uint256 deadline
+    ) external payable ensure(deadline) returns (uint256 amountOut) {
+        if (path.length == 0) revert EmptyPath();
+        uint256 priorBal = _ethPriorBalance();
+
+        MultiInputData memory data = MultiInputData({
+            currencyIn: currencyIn,
+            path: path,
+            amountIn: amountIn,
+            payer: msg.sender,
+            recipient: recipient,
+            usePermit2: true
         });
         amountOut = abi.decode(
             POOL_MANAGER.unlock(abi.encode(TAG_MULTI_IN, abi.encode(data))),
@@ -307,7 +411,37 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
             path: path,
             amountOut: amountOut,
             payer: msg.sender,
-            recipient: recipient
+            recipient: recipient,
+            usePermit2: false
+        });
+        amountIn = abi.decode(
+            POOL_MANAGER.unlock(abi.encode(TAG_MULTI_OUT, abi.encode(data))),
+            (uint256)
+        );
+        if (amountIn > amountInMax) revert ExcessiveInput();
+        _refundExcessETH(priorBal);
+    }
+
+    /// @notice Permit2 variant of swapExactOutput. See
+    ///         swapExactInputSingleViaPermit2 for the prerequisites.
+    function swapExactOutputViaPermit2(
+        Currency currencyIn,
+        PathHop[] calldata path,
+        uint256 amountOut,
+        uint256 amountInMax,
+        address recipient,
+        uint256 deadline
+    ) external payable ensure(deadline) returns (uint256 amountIn) {
+        if (path.length == 0) revert EmptyPath();
+        uint256 priorBal = _ethPriorBalance();
+
+        MultiOutputData memory data = MultiOutputData({
+            currencyIn: currencyIn,
+            path: path,
+            amountOut: amountOut,
+            payer: msg.sender,
+            recipient: recipient,
+            usePermit2: true
         });
         amountIn = abi.decode(
             POOL_MANAGER.unlock(abi.encode(TAG_MULTI_OUT, abi.encode(data))),
@@ -349,7 +483,42 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
                 amount0Min: amount0Min,
                 amount1Min: amount1Min,
                 payer: msg.sender,
-                recipient: recipient
+                recipient: recipient,
+                usePermit2: false
+            });
+            bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_ADD_LIQUIDITY, abi.encode(d)));
+            (liquidity, amount0, amount1) = abi.decode(ret, (uint128, uint256, uint256));
+        }
+
+        _mintLPShares(key, recipient, liquidity);
+        _refundExcessETH(priorBal);
+    }
+
+    /// @notice Permit2 variant of addLiquidity. Both currencies are pulled
+    ///         from the payer via Permit2.transferFrom. Native-ETH pools
+    ///         are not supported (Permit2 cannot mediate ETH); use the
+    ///         regular `addLiquidity` for those.
+    function addLiquidityViaPermit2(
+        PoolKey calldata key,
+        uint256 amount0Desired,
+        uint256 amount1Desired,
+        uint256 amount0Min,
+        uint256 amount1Min,
+        address recipient,
+        uint256 deadline
+    ) external payable ensure(deadline) returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
+        uint256 priorBal = _ethPriorBalance();
+        {
+            LiquidityData memory d = LiquidityData({
+                key: key,
+                liquidityDelta: 0,
+                amount0Desired: amount0Desired,
+                amount1Desired: amount1Desired,
+                amount0Min: amount0Min,
+                amount1Min: amount1Min,
+                payer: msg.sender,
+                recipient: recipient,
+                usePermit2: true
             });
             bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_ADD_LIQUIDITY, abi.encode(d)));
             (liquidity, amount0, amount1) = abi.decode(ret, (uint128, uint256, uint256));
@@ -386,7 +555,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
             amount0Min: amount0Min,
             amount1Min: amount1Min,
             payer: address(0),
-            recipient: recipient
+            recipient: recipient,
+            usePermit2: false   // removal never pulls from payer; flag unused
         });
         bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_REMOVE_LIQUIDITY, abi.encode(d)));
         (amount0, amount1) = abi.decode(ret, (uint256, uint256));
@@ -449,8 +619,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
         if (amount0 < data.amount0Min) revert InsufficientAAmount();
         if (amount1 < data.amount1Min) revert InsufficientBAmount();
 
-        _settle(data.key.currency0, data.payer, amount0);
-        _settle(data.key.currency1, data.payer, amount1);
+        _settle(data.key.currency0, data.payer, amount0, data.usePermit2);
+        _settle(data.key.currency1, data.payer, amount1, data.usePermit2);
 
         return abi.encode(liquidity, amount0, amount1);
     }
@@ -520,11 +690,11 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
         uint256 outputAmount;
         if (d0 < 0) {
             inputAmount = uint256(uint128(-d0));
-            _settle(data.key.currency0, data.payer, inputAmount);
+            _settle(data.key.currency0, data.payer, inputAmount, data.usePermit2);
         }
         if (d1 < 0) {
             inputAmount = uint256(uint128(-d1));
-            _settle(data.key.currency1, data.payer, inputAmount);
+            _settle(data.key.currency1, data.payer, inputAmount, data.usePermit2);
         }
         if (d0 > 0) {
             outputAmount = uint256(uint128(d0));
@@ -593,7 +763,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
         // After all hops, the only outstanding non-zero deltas should be:
         //   currencyIn:   -amountIn  (router owes)
         //   final out:    +lastOutput (router is owed)
-        _settle(data.currencyIn, data.payer, data.amountIn);
+        _settle(data.currencyIn, data.payer, data.amountIn, data.usePermit2);
         _take(currentIn, data.recipient, uint256(lastOutput));
 
         return abi.encode(uint256(lastOutput));
@@ -630,7 +800,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
             if (i == 0) amountInRequired = inAmount;
         }
 
-        _settle(data.currencyIn, data.payer, amountInRequired);
+        _settle(data.currencyIn, data.payer, amountInRequired, data.usePermit2);
         _take(data.path[n - 1].intermediateCurrency, data.recipient, data.amountOut);
 
         return abi.encode(amountInRequired);
@@ -684,17 +854,30 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
     // Settle / take helpers — native ETH aware
     // ---------------------------------------------------------------------
 
-    function _settle(Currency currency, address payer, uint256 amount) internal {
+    /// @param usePermit2 when true, ERC20 transfers route through
+    ///                   `Permit2.transferFrom` instead of the token's own
+    ///                   allowance ledger. Native-ETH legs ignore the flag.
+    function _settle(Currency currency, address payer, uint256 amount, bool usePermit2) internal {
         if (amount == 0) return;
         POOL_MANAGER.sync(currency);
         if (Currency.unwrap(currency) == address(0)) {
+            // Native ETH: Permit2 has no role here. Reject explicitly when
+            // a caller asked for Permit2 on an ETH leg so the misuse is
+            // visible rather than silently downgrading.
+            if (usePermit2) revert Permit2NativeUnsupported();
             POOL_MANAGER.settle{value: amount}();
         } else {
-            ERC20 token = ERC20(Currency.unwrap(currency));
+            address tokenAddr = Currency.unwrap(currency);
             if (payer == address(this)) {
-                token.safeTransfer(address(POOL_MANAGER), amount);
+                ERC20(tokenAddr).safeTransfer(address(POOL_MANAGER), amount);
+            } else if (usePermit2) {
+                // Permit2's transferFrom requires the caller (this router)
+                // to have a Permit2-recorded allowance from `payer`. The
+                // user typically grants it via `router.permit(...)` in the
+                // same multicall right before the swap.
+                permit2.transferFrom(payer, address(POOL_MANAGER), uint160(amount), tokenAddr);
             } else {
-                token.safeTransferFrom(payer, address(POOL_MANAGER), amount);
+                ERC20(tokenAddr).safeTransferFrom(payer, address(POOL_MANAGER), amount);
             }
             POOL_MANAGER.settle();
         }

@@ -19,6 +19,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 contract SpryRouterSingleTest is Test {
     IPoolManager public manager;
@@ -34,7 +35,7 @@ contract SpryRouterSingleTest is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         modifyRouter = new PoolModifyLiquidityTest(manager);
-        router = new SpryRouter(manager);
+        router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
 
         ERC20Mock a = new ERC20Mock();
         ERC20Mock b = new ERC20Mock();

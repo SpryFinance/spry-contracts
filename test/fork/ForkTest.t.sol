@@ -16,6 +16,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title ForkTest
 /// @notice Smoke-test the SpryHook + SpryRouter against a real, already-
@@ -64,7 +65,7 @@ contract ForkTest is Test {
         manager = IPoolManager(managerAddr);
 
         // Deploy our periphery against the live PoolManager.
-        router = new SpryRouter(manager);
+        router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
 
         ERC20Mock a = new ERC20Mock();
         ERC20Mock b = new ERC20Mock();

@@ -16,6 +16,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {SmartFeeLib} from "../../contracts/libs/SmartFeeLib.sol";
 
 /// @title AsymmetricDecimals
@@ -39,7 +40,7 @@ contract AsymmetricDecimals is Test {
 
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
-        router = new SpryRouter(manager);
+        router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),

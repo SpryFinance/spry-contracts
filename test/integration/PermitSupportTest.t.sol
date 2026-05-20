@@ -17,6 +17,7 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title PermitSupportTest
 /// @notice Validates the router's EIP-2612 `selfPermit` + `multicall`
@@ -46,7 +47,7 @@ contract PermitSupportTest is Test {
         owner = vm.addr(OWNER_PK);
 
         manager = IPoolManager(new PoolManager(address(this)));
-        router = new SpryRouter(manager);
+        router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
