@@ -19,6 +19,8 @@ import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
+import {LPHelper} from "../utils/LPHelper.sol";
+
 /// @title ScenarioBase
 /// @notice Shared fixture for the attack-scenario suite. Deploys a fresh
 ///         PoolManager, mines + deploys SpryHook, deploys SpryRouter,
@@ -33,6 +35,7 @@ abstract contract ScenarioBase is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     ERC20Mock internal token0;
     ERC20Mock internal token1;
     PoolKey internal key;
@@ -48,6 +51,7 @@ abstract contract ScenarioBase is Test {
     function setUp() public virtual {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         ERC20Mock a = new ERC20Mock();
         ERC20Mock b = new ERC20Mock();
@@ -71,7 +75,8 @@ abstract contract ScenarioBase is Test {
         });
         manager.initialize(key, SQRT_PRICE_1_1);
 
-        // Provision the three test actors.
+        // Provision the three test actors with router (swap) and lp helper
+        // (LP) approvals plus token + native-ETH balances.
         address[3] memory actors = [alice, bob, carol];
         for (uint256 i = 0; i < actors.length; ++i) {
             deal(address(token0), actors[i], 1e30);
@@ -80,6 +85,8 @@ abstract contract ScenarioBase is Test {
             vm.startPrank(actors[i]);
             token0.approve(address(router), type(uint256).max);
             token1.approve(address(router), type(uint256).max);
+            token0.approve(address(lp),     type(uint256).max);
+            token1.approve(address(lp),     type(uint256).max);
             vm.stopPrank();
         }
 
@@ -88,7 +95,32 @@ abstract contract ScenarioBase is Test {
         deal(address(token1), address(this), 1e30);
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
-        router.addLiquidity(key, SEED_LIQUIDITY, SEED_LIQUIDITY, 0, 0, address(this), block.timestamp + 100);
+        token0.approve(address(lp),     type(uint256).max);
+        token1.approve(address(lp),     type(uint256).max);
+        lp.addLiquidity(key, SEED_LIQUIDITY, SEED_LIQUIDITY, address(this));
+    }
+
+    // -----------------------------------------------------------------
+    // LP helpers — wrap the LPHelper API so individual scenarios stay
+    // terse. Each `owner` gets a unique V4 position (per-owner salt),
+    // matching the canonical Uniswap PositionManager design.
+    // -----------------------------------------------------------------
+    function _addLiquidity(address actor, uint256 amount0Desired, uint256 amount1Desired)
+        internal returns (uint128 liquidity, uint256 amount0, uint256 amount1)
+    {
+        vm.prank(actor);
+        return lp.addLiquidity(key, amount0Desired, amount1Desired, actor);
+    }
+
+    function _removeLiquidity(address actor, uint128 liquidity)
+        internal returns (uint256 amount0, uint256 amount1)
+    {
+        vm.prank(actor);
+        return lp.removeLiquidity(key, liquidity, actor, actor);
+    }
+
+    function _positionLiquidity(address actor) internal view returns (uint128) {
+        return lp.positionLiquidity(key, actor);
     }
 
     // -----------------------------------------------------------------

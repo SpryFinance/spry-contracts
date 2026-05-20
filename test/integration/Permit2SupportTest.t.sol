@@ -20,6 +20,7 @@ import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title Permit2SupportTest
 /// @notice End-to-end coverage of the router's Permit2 integration:
@@ -36,6 +37,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     ERC20Mock internal token0;
     ERC20Mock internal token1;
     IAllowanceTransfer internal permit2;
@@ -65,6 +67,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
 
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, permit2);
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -93,7 +96,9 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         deal(address(token1), address(this), 1e30);
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
-        router.addLiquidity(key, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        token0.approve(address(lp),     type(uint256).max);
+        token1.approve(address(lp),     type(uint256).max);
+        lp.addLiquidity(key, 1e22, 1e22, address(this));
 
         // Owner: tokens + the standard one-time approval to Permit2 itself.
         // After this, swaps only need a Permit2-signed message — no further
@@ -209,36 +214,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
     }
 
     // ---------------------------------------------------------------------
-    // 3. permit2 + addLiquidity in one call (both currencies).
-    // ---------------------------------------------------------------------
-    function testPermit2PlusAddLiquidity() public {
-        uint160 amount = 5e21;
-        uint48 expiration = uint48(block.timestamp + 100);
-
-        // Both tokens need a Permit2-signed allowance to the router.
-        IAllowanceTransfer.PermitSingle memory p0 =
-            _buildPermitSingle(address(token0), amount, expiration);
-        bytes memory sig0 = _signPermitSingle(p0);
-        IAllowanceTransfer.PermitSingle memory p1 =
-            _buildPermitSingle(address(token1), amount, expiration);
-        bytes memory sig1 = _signPermitSingle(p1);
-
-        bytes[] memory calls = new bytes[](3);
-        calls[0] = abi.encodeCall(Permit2Forwarder.permit, (owner, p0, sig0));
-        calls[1] = abi.encodeCall(Permit2Forwarder.permit, (owner, p1, sig1));
-        calls[2] = abi.encodeCall(
-            SpryRouter.addLiquidityViaPermit2,
-            (key, uint256(amount), uint256(amount), 0, 0, owner, block.timestamp + 100)
-        );
-
-        vm.prank(owner);
-        bytes[] memory results = router.multicall(calls);
-        (uint128 liquidity, , ) = abi.decode(results[2], (uint128, uint256, uint256));
-        assertGt(liquidity, 0, "LP shares minted via Permit2 path");
-    }
-
-    // ---------------------------------------------------------------------
-    // 4. Multi-hop exact-input via Permit2.
+    // 3. Multi-hop exact-input via Permit2.
     // ---------------------------------------------------------------------
     function testPermit2PlusMultiHopExactInput() public {
         // Build a third token + a second pool so we can multi-hop.
@@ -246,6 +222,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         deal(address(tokenC), address(this), 1e30);
         deal(address(tokenC), owner, 1e24);
         tokenC.approve(address(router), type(uint256).max);
+        tokenC.approve(address(lp),     type(uint256).max);
         vm.prank(owner);
         tokenC.approve(address(permit2), type(uint256).max);
 
@@ -260,7 +237,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
             hooks: IHooks(address(hook))
         });
         manager.initialize(keyBC, SQRT_PRICE_1_1);
-        router.addLiquidity(keyBC, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(keyBC, 1e22, 1e22, address(this));
 
         uint160 amountIn = 1e18;
         uint48 expiration = uint48(block.timestamp + 100);
@@ -411,9 +388,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         });
         manager.initialize(keyETH, SQRT_PRICE_1_1);
         deal(address(this), 100 ether);
-        router.addLiquidity{value: 10 ether}(
-            keyETH, 10 ether, 10 ether, 0, 0, address(this), block.timestamp + 100
-        );
+        lp.addLiquidity{value: 10 ether}(keyETH, 10 ether, 10 ether, address(this));
 
         // Owner: zeroForOne = true means ETH-in, which Permit2 can't mediate.
         deal(owner, 5 ether);

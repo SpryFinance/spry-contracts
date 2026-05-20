@@ -17,6 +17,7 @@ import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @notice Coverage suite for the router's remaining branches: ETH refund
 ///         on swapExactOutputSingle, multi-hop with native ETH on the
@@ -27,6 +28,7 @@ contract SpryRouterBranchTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
 
     ERC20Mock internal tokenA;
     ERC20Mock internal tokenB;
@@ -40,6 +42,7 @@ contract SpryRouterBranchTest is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -58,6 +61,8 @@ contract SpryRouterBranchTest is Test {
         deal(address(this), 1000 ether);
         tokenA.approve(address(router), type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);
+        tokenA.approve(address(lp),     type(uint256).max);
+        tokenB.approve(address(lp),     type(uint256).max);
 
         // Native / tokenA pool: address(0) sorts smallest, so it is currency0.
         ethTokenAKey = PoolKey({
@@ -68,15 +73,7 @@ contract SpryRouterBranchTest is Test {
             hooks: IHooks(address(hook))
         });
         manager.initialize(ethTokenAKey, SQRT_PRICE_1_1);
-        router.addLiquidity{value: 10 ether}(
-            ethTokenAKey,
-            10 ether,
-            10 ether,
-            0,
-            0,
-            address(this),
-            block.timestamp + 100
-        );
+        lp.addLiquidity{value: 10 ether}(ethTokenAKey, 10 ether, 10 ether, address(this));
 
         // tokenA / tokenB pool (canonical sort).
         (Currency cA, Currency cB) = address(tokenA) < address(tokenB)
@@ -90,7 +87,7 @@ contract SpryRouterBranchTest is Test {
             hooks: IHooks(address(hook))
         });
         manager.initialize(abKey, SQRT_PRICE_1_1);
-        router.addLiquidity(abKey, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(abKey, 1e22, 1e22, address(this));
     }
 
     // ------------------------------------------------------------------
@@ -113,26 +110,6 @@ contract SpryRouterBranchTest is Test {
         uint256 spent = ethBefore - address(this).balance;
         assertLt(spent, 5 ether, "router refunded the unused ETH");
         assertGt(spent, 0);
-    }
-
-    // ------------------------------------------------------------------
-    // addLiquidity excess-ETH refund
-    // ------------------------------------------------------------------
-    function testAddLiquidityRefundsExcessETH() public {
-        // Send 50 ETH but the LiquidityAmounts math + 1:1 price means only
-        // ~the desired amount0 (10 ETH) is consumed; the rest is refunded.
-        uint256 ethBefore = address(this).balance;
-        router.addLiquidity{value: 50 ether}(
-            ethTokenAKey,
-            10 ether,
-            10 ether,
-            0,
-            0,
-            address(this),
-            block.timestamp + 100
-        );
-        uint256 spent = ethBefore - address(this).balance;
-        assertLt(spent, 50 ether, "excess ETH was refunded");
     }
 
     // ------------------------------------------------------------------

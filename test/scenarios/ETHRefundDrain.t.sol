@@ -15,6 +15,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title ETHRefundDrain
@@ -30,12 +31,14 @@ contract ETHRefundDrain is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     ERC20Mock internal token;
     PoolKey internal key;
 
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -60,16 +63,9 @@ contract ETHRefundDrain is Test {
         deal(address(token), address(this), 1e30);
         deal(address(this), 100 ether);
         token.approve(address(router), type(uint256).max);
+        token.approve(address(lp),     type(uint256).max);
 
-        router.addLiquidity{value: 10 ether}(
-            key,
-            10 ether,
-            10 ether,
-            0,
-            0,
-            address(this),
-            block.timestamp + 100
-        );
+        lp.addLiquidity{value: 10 ether}(key, 10 ether, 10 ether, address(this));
     }
 
     function testGreedyCallerOnlyGetsItsActualOverpayment() public {

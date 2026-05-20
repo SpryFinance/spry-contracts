@@ -17,6 +17,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title EntryAmountAndPathGuardsTest
 /// @notice Pins audit-pass-2 findings N3 (uint256 amount bound) and N4
@@ -42,6 +43,7 @@ contract EntryAmountAndPathGuardsTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
 
     ERC20Mock internal tokenA;
     ERC20Mock internal tokenB;
@@ -56,6 +58,7 @@ contract EntryAmountAndPathGuardsTest is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -75,16 +78,19 @@ contract EntryAmountAndPathGuardsTest is Test {
         deal(address(tokenB), address(this), 1e30);
         deal(address(tokenC), address(this), 1e30);
         tokenA.approve(address(router), type(uint256).max);
+        tokenA.approve(address(lp),     type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);
+        tokenB.approve(address(lp),     type(uint256).max);
         tokenC.approve(address(router), type(uint256).max);
+        tokenC.approve(address(lp),     type(uint256).max);
 
         keyAB = _erc20Key(tokenA, tokenB);
         keyBC = _erc20Key(tokenB, tokenC);
         manager.initialize(keyAB, SQRT_PRICE_1_1);
         manager.initialize(keyBC, SQRT_PRICE_1_1);
 
-        router.addLiquidity(keyAB, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
-        router.addLiquidity(keyBC, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(keyAB, 1e22, 1e22, address(this));
+        lp.addLiquidity(keyBC, 1e22, 1e22, address(this));
     }
 
     function _sortThree(ERC20Mock a, ERC20Mock b, ERC20Mock c)

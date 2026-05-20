@@ -13,18 +13,27 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @notice Stateful fuzz handler. Forge calls these public functions with
 ///         random args; each one bounds inputs to a sane range, executes
-///         the op against the V4 router, and updates ghost counters.
-///         In-call assertions (e.g. K-conservation across pure swaps) live
-///         here; cross-state invariants live on the top-level test contract.
+///         the op against the V4 router or LPHelper, and updates ghost
+///         counters. In-call assertions (e.g. K-conservation across pure
+///         swaps) live here; cross-state invariants live on the top-level
+///         test contract.
+///
+///         LP ops now go through LPHelper (which uses per-owner salts);
+///         swap ops still go through SpryRouter. This mirrors how
+///         production users interact with Spry: SpryRouter for swaps,
+///         Uniswap's PositionManager for LP (the LPHelper is the test
+///         equivalent, with the same per-owner-salt fairness model).
 contract InvariantHandler is Test {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
     IPoolManager public immutable MANAGER;
     SpryRouter public immutable ROUTER;
+    LPHelper public immutable LP;
     PoolKey public KEY;
     ERC20Mock public immutable TOKEN0;
     ERC20Mock public immutable TOKEN1;
@@ -33,21 +42,21 @@ contract InvariantHandler is Test {
     uint256 public swapCount;
     uint256 public addCount;
     uint256 public removeCount;
-    uint256 public totalSharesMinted;
-    uint256 public totalSharesBurned;
 
-    // Multiple actor identities so the per-holder ledger is exercised.
+    // Multiple actor identities so per-owner V4 positions are exercised.
     address[3] public actors;
 
     constructor(
         IPoolManager _manager,
         SpryRouter _router,
+        LPHelper _lp,
         PoolKey memory _key,
         ERC20Mock _token0,
         ERC20Mock _token1
     ) {
         MANAGER = _manager;
         ROUTER = _router;
+        LP = _lp;
         KEY = _key;
         TOKEN0 = _token0;
         TOKEN1 = _token1;
@@ -62,6 +71,8 @@ contract InvariantHandler is Test {
             vm.startPrank(actors[i]);
             TOKEN0.approve(address(ROUTER), type(uint256).max);
             TOKEN1.approve(address(ROUTER), type(uint256).max);
+            TOKEN0.approve(address(LP),     type(uint256).max);
+            TOKEN1.approve(address(LP),     type(uint256).max);
             vm.stopPrank();
         }
     }
@@ -109,13 +120,8 @@ contract InvariantHandler is Test {
         amount1 = bound(amount1, 1e15, 1e22);
 
         vm.startPrank(actor);
-        try ROUTER.addLiquidity(KEY, amount0, amount1, 0, 0, actor, block.timestamp + 100) returns (
-            uint128 liquidity,
-            uint256,
-            uint256
-        ) {
+        try LP.addLiquidity(KEY, amount0, amount1, actor) returns (uint128, uint256, uint256) {
             ++addCount;
-            totalSharesMinted += uint256(liquidity);
         } catch {
             // Pool not initialized or insufficient liquidity computed.
         }
@@ -126,26 +132,25 @@ contract InvariantHandler is Test {
         address actor = _actor(actorIdx);
         fractionBps = bound(fractionBps, 1, 10_000);
 
-        uint256 bal = ROUTER.balanceOf(actor, uint256(uint256(PoolId.unwrap(_poolId()))));
-        if (bal == 0) return;
+        uint128 currentLiq = LP.positionLiquidity(KEY, actor);
+        if (currentLiq == 0) return;
 
-        uint128 toRemove = uint128((bal * fractionBps) / 10_000);
+        uint128 toRemove = uint128((uint256(currentLiq) * fractionBps) / 10_000);
         if (toRemove == 0) return;
 
         vm.startPrank(actor);
-        try ROUTER.removeLiquidity(KEY, toRemove, 0, 0, actor, block.timestamp + 100) {
+        try LP.removeLiquidity(KEY, toRemove, actor, actor) {
             ++removeCount;
-            totalSharesBurned += uint256(toRemove);
         } catch {}
         vm.stopPrank();
     }
 
-    /// @notice Sum of LP shares across known actors. Used by the invariant
-    ///         test to prove balance bookkeeping matches totalSupply.
-    function actorSharesSum() external view returns (uint256 s) {
-        uint256 id = uint256(PoolId.unwrap(_poolId()));
+    /// @notice Sum of LP position liquidity across known actors. Used by
+    ///         the invariant test to prove the per-owner V4 positions add
+    ///         up to the pool's in-range liquidity (alongside the seeder).
+    function actorPositionSum() external view returns (uint256 s) {
         for (uint256 i; i < actors.length; ++i) {
-            s += ROUTER.balanceOf(actors[i], uint256(id));
+            s += LP.positionLiquidity(KEY, actors[i]);
         }
     }
 }

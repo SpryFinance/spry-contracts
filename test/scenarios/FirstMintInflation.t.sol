@@ -15,6 +15,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title FirstMintInflation
@@ -31,6 +32,7 @@ contract FirstMintInflation is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     ERC20Mock internal token0;
     ERC20Mock internal token1;
     PoolKey internal key;
@@ -41,6 +43,7 @@ contract FirstMintInflation is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         ERC20Mock a = new ERC20Mock();
         ERC20Mock b = new ERC20Mock();
@@ -70,11 +73,15 @@ contract FirstMintInflation is Test {
         deal(address(token1), victim, 1e30);
         vm.startPrank(attacker);
         token0.approve(address(router), type(uint256).max);
+        token0.approve(address(lp),     type(uint256).max);
         token1.approve(address(router), type(uint256).max);
+        token1.approve(address(lp),     type(uint256).max);
         vm.stopPrank();
         vm.startPrank(victim);
         token0.approve(address(router), type(uint256).max);
+        token0.approve(address(lp),     type(uint256).max);
         token1.approve(address(router), type(uint256).max);
+        token1.approve(address(lp),     type(uint256).max);
         vm.stopPrank();
     }
 
@@ -82,9 +89,7 @@ contract FirstMintInflation is Test {
         // Attacker is the very first depositor; tries to mint the smallest
         // possible position so a single direct donation skews share value.
         vm.prank(attacker);
-        (uint128 attackerLiq, , ) = router.addLiquidity(
-            key, 1001, 1001, 0, 0, attacker, block.timestamp + 100
-        );
+        (uint128 attackerLiq, , ) = lp.addLiquidity(key, 1001, 1001, attacker);
         assertGt(attackerLiq, 0, "attacker minted dust position");
 
         // Attacker donates a huge amount of token0 directly into the
@@ -96,9 +101,7 @@ contract FirstMintInflation is Test {
 
         // Honest LP joins with a normal-sized deposit.
         vm.prank(victim);
-        (uint128 victimLiq, uint256 v0, uint256 v1) = router.addLiquidity(
-            key, 1e18, 1e18, 0, 0, victim, block.timestamp + 100
-        );
+        (uint128 victimLiq, uint256 v0, uint256 v1) = lp.addLiquidity(key, 1e18, 1e18, victim);
 
         // Victim received a meaningful, non-rounded-to-zero LP position.
         // The exact value depends on getLiquidityForAmounts at the current

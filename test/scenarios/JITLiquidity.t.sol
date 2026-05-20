@@ -21,30 +21,13 @@ contract JITLiquidity is ScenarioBase {
         uint256 bobIn0 = 5e22;
         uint256 bobIn1 = 5e22;
         (uint256 bobBal0Before, uint256 bobBal1Before, ) = _snapshot(bob);
-        vm.prank(bob);
-        (uint128 bobLiq, , ) = router.addLiquidity(
-            key,
-            bobIn0,
-            bobIn1,
-            0,
-            0,
-            bob,
-            block.timestamp + 100
-        );
+        (uint128 bobLiq, , ) = _addLiquidity(bob, bobIn0, bobIn1);
 
         // Victim (alice) does a sizable swap.
         _swapExactIn(alice, true, 5e21);
 
         // Bob immediately removes his position.
-        vm.prank(bob);
-        router.removeLiquidity(
-            key,
-            bobLiq,
-            0,
-            0,
-            bob,
-            block.timestamp + 100
-        );
+        _removeLiquidity(bob, bobLiq);
 
         // Bob's net position in token0 + token1 must NOT exceed what he put in.
         // Anything else would constitute theft from pre-existing LPs, since

@@ -16,6 +16,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title ForkTest
@@ -37,6 +38,7 @@ contract ForkTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     ERC20Mock internal token0;
     ERC20Mock internal token1;
     PoolKey internal key;
@@ -66,6 +68,7 @@ contract ForkTest is Test {
 
         // Deploy our periphery against the live PoolManager.
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         ERC20Mock a = new ERC20Mock();
         ERC20Mock b = new ERC20Mock();
@@ -73,7 +76,9 @@ contract ForkTest is Test {
         deal(address(token0), address(this), 1e30);
         deal(address(token1), address(this), 1e30);
         token0.approve(address(router), type(uint256).max);
+        token0.approve(address(lp),     type(uint256).max);
         token1.approve(address(router), type(uint256).max);
+        token1.approve(address(lp),     type(uint256).max);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -93,7 +98,7 @@ contract ForkTest is Test {
         });
 
         manager.initialize(key, SQRT_PRICE_1_1);
-        router.addLiquidity(key, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(key, 1e22, 1e22, address(this));
 
         forkActive = true;
     }

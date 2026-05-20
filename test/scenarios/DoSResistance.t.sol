@@ -15,6 +15,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title DoSResistance
@@ -30,10 +31,12 @@ contract DoSResistance is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
 
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -81,17 +84,18 @@ contract DoSResistance is Test {
         deal(address(good), address(this), 1e30);
         deal(address(good2), address(this), 1e30);
         bad.approve(address(router), type(uint256).max);
+        bad.approve(address(lp),     type(uint256).max);
         good.approve(address(router), type(uint256).max);
+        good.approve(address(lp),     type(uint256).max);
         good2.approve(address(router), type(uint256).max);
+        good2.approve(address(lp),     type(uint256).max);
 
         // Pool 1 add liquidity will fail because bad token reverts on transfer.
         vm.expectRevert();
-        router.addLiquidity(keyBad, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(keyBad, 1e22, 1e22, address(this));
 
         // Pool 2 still works perfectly. This is the property we care about.
-        (uint128 liq,,) = router.addLiquidity(
-            keyGood, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100
-        );
+        (uint128 liq,,) = lp.addLiquidity(keyGood, 1e22, 1e22, address(this));
         assertGt(liq, 0, "healthy pool unaffected by bad-token pool failure");
 
         uint256 outBefore = good2.balanceOf(address(this));
@@ -125,11 +129,11 @@ contract DoSResistance is Test {
         deal(address(t0), address(this), 1e30);
         deal(address(t1), address(this), 1e30);
         t0.approve(address(router), type(uint256).max);
+        t0.approve(address(lp),     type(uint256).max);
         t1.approve(address(router), type(uint256).max);
+        t1.approve(address(lp),     type(uint256).max);
 
-        (uint128 liq,,) = router.addLiquidity(
-            vanillaKey, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100
-        );
+        (uint128 liq,,) = lp.addLiquidity(vanillaKey, 1e22, 1e22, address(this));
         assertGt(liq, 0);
 
         uint256 out = router.swapExactInputSingle(

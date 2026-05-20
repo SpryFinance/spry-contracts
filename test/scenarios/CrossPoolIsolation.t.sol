@@ -36,8 +36,15 @@ contract CrossPoolIsolation is ScenarioBase {
         deal(address(token2), bob, 1e30);
         deal(address(token2), carol, 1e30);
         token2.approve(address(router), type(uint256).max);
-        vm.startPrank(alice); token2.approve(address(router), type(uint256).max); vm.stopPrank();
-        vm.startPrank(bob);   token2.approve(address(router), type(uint256).max); vm.stopPrank();
+        token2.approve(address(lp),     type(uint256).max);
+        vm.startPrank(alice);
+        token2.approve(address(router), type(uint256).max);
+        token2.approve(address(lp),     type(uint256).max);
+        vm.stopPrank();
+        vm.startPrank(bob);
+        token2.approve(address(router), type(uint256).max);
+        token2.approve(address(lp),     type(uint256).max);
+        vm.stopPrank();
 
         // Build pool A/C (where A is one of the existing tokens — pick token0).
         (Currency c0, Currency c1) = address(token0) < address(token2)
@@ -51,26 +58,25 @@ contract CrossPoolIsolation is ScenarioBase {
             hooks: IHooks(address(hook))
         });
         manager.initialize(keyAC, SQRT_PRICE_1_1);
-        router.addLiquidity(keyAC, SEED_LIQUIDITY, SEED_LIQUIDITY, 0, 0, address(this), block.timestamp + 100);
+        // Seed pool A/C — _addLiquidity helper only knows the base pool key,
+        // so call lp directly for the second pool's seed.
+        lp.addLiquidity(keyAC, SEED_LIQUIDITY, SEED_LIQUIDITY, address(this));
     }
 
     function testCannotRemoveOnPoolBUsingPoolAShares() public {
         // Alice deposits on pool A/B (the base pool).
-        vm.prank(alice);
-        (uint128 aliceLiqAB, , ) = router.addLiquidity(
-            key, 1e21, 1e21, 0, 0, alice, block.timestamp + 100
-        );
+        (uint128 aliceLiqAB, , ) = _addLiquidity(alice, 1e21, 1e21);
         assertGt(aliceLiqAB, 0);
 
-        // Pool A/C ledger has zero balance for alice.
-        uint256 idAC = uint256(PoolId.unwrap(keyAC.toId()));
-        assertEq(router.balanceOf(alice, uint256(idAC)), 0, "alice has zero shares on pool A/C");
+        // Pool A/C ledger has zero liquidity for alice — per-pool isolation
+        // by V4 position (owner, lower, upper, salt).
+        assertEq(lp.positionLiquidity(keyAC, alice), 0, "alice has zero liquidity on pool A/C");
 
-        // Trying to remove the same amount on pool A/C must revert
-        // (underflow on the per-id _burn).
+        // Trying to remove that amount on pool A/C must revert: V4 will
+        // see the position has no liquidity and refuse the negative delta.
         vm.prank(alice);
         vm.expectRevert();
-        router.removeLiquidity(keyAC, aliceLiqAB, 0, 0, alice, block.timestamp + 100);
+        lp.removeLiquidity(keyAC, aliceLiqAB, alice, alice);
     }
 
     function testSwapOnPoolABDoesNotAffectPoolAC() public {

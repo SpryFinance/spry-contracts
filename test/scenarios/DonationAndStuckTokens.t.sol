@@ -54,7 +54,7 @@ contract DonationAndStuckTokens is ScenarioBase {
         vm.startPrank(carol);
         try router.swapExactInputSingle(key, true, 1, 1, carol, block.timestamp + 100, "") returns (uint256) {} catch {}
         try router.swapExactOutputSingle(key, true, 1, type(uint256).max, carol, block.timestamp + 100, "") returns (uint256) {} catch {}
-        try router.removeLiquidity(key, 1, 0, 0, carol, block.timestamp + 100) returns (uint256, uint256) {} catch {}
+        try lp.removeLiquidity(key, 1, carol, carol) returns (uint256, uint256) {} catch {}
         vm.stopPrank();
 
         // The router still holds the stuck tokens — they didn't leak to carol.

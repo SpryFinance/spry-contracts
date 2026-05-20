@@ -19,6 +19,7 @@ import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title SwapShapeMatrixTest
 /// @notice Fills the remaining gaps in the router's swap-shape coverage:
@@ -33,6 +34,7 @@ contract SwapShapeMatrixTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     ERC20Mock internal tokenA;
     ERC20Mock internal tokenB;
     ERC20Mock internal tokenC;
@@ -52,6 +54,7 @@ contract SwapShapeMatrixTest is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -84,10 +87,10 @@ contract SwapShapeMatrixTest is Test {
         manager.initialize(keyEthA, SQRT_PRICE_1_1);
         manager.initialize(keyEthB, SQRT_PRICE_1_1);
 
-        router.addLiquidity(keyAB, SEED, SEED, 0, 0, address(this), block.timestamp + 100);
-        router.addLiquidity(keyBC, SEED, SEED, 0, 0, address(this), block.timestamp + 100);
-        router.addLiquidity{value: 50 ether}(keyEthA, 50 ether, 50 ether, 0, 0, address(this), block.timestamp + 100);
-        router.addLiquidity{value: 50 ether}(keyEthB, 50 ether, 50 ether, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(keyAB, SEED, SEED, address(this));
+        lp.addLiquidity(keyBC, SEED, SEED, address(this));
+        lp.addLiquidity{value: 50 ether}(keyEthA, 50 ether, 50 ether, address(this));
+        lp.addLiquidity{value: 50 ether}(keyEthB, 50 ether, 50 ether, address(this));
     }
 
     function _fund(address who) internal {
@@ -99,6 +102,9 @@ contract SwapShapeMatrixTest is Test {
         tokenA.approve(address(router), type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);
         tokenC.approve(address(router), type(uint256).max);
+        tokenA.approve(address(lp),     type(uint256).max);
+        tokenB.approve(address(lp),     type(uint256).max);
+        tokenC.approve(address(lp),     type(uint256).max);
         vm.stopPrank();
     }
 

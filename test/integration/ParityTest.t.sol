@@ -19,6 +19,7 @@ import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title ParityTest
 /// @notice Edge-case coverage for the surface the single / multi / liquidity
@@ -33,6 +34,7 @@ contract ParityTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
 
     ERC20Mock internal tokenA;
     ERC20Mock internal tokenB;
@@ -44,6 +46,7 @@ contract ParityTest is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -66,6 +69,9 @@ contract ParityTest is Test {
         tokenA.approve(address(router), type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);
         tokenC.approve(address(router), type(uint256).max);
+        tokenA.approve(address(lp),     type(uint256).max);
+        tokenB.approve(address(lp),     type(uint256).max);
+        tokenC.approve(address(lp),     type(uint256).max);
     }
 
     function _sortPair(ERC20Mock a, ERC20Mock b) internal pure returns (Currency c0, Currency c1) {
@@ -101,15 +107,7 @@ contract ParityTest is Test {
         });
         manager.initialize(key, SQRT_PRICE_1_1);
 
-        router.addLiquidity{value: 10 ether}(
-            key,
-            10 ether,
-            10 ether,
-            0,
-            0,
-            address(this),
-            block.timestamp + 100
-        );
+        lp.addLiquidity{value: 10 ether}(key, 10 ether, 10 ether, address(this));
 
         uint256 ethBefore = address(this).balance;
         uint256 tokABefore = tokenA.balanceOf(address(this));
@@ -130,66 +128,6 @@ contract ParityTest is Test {
         assertEq(ethBefore - address(this).balance, 1 ether, "spent exactly 1 ETH");
     }
 
-    function testNativeETHRemoveLiquidityReturnsETH() public {
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(address(tokenA)),
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(hook))
-        });
-        manager.initialize(key, SQRT_PRICE_1_1);
-
-        (uint128 liq,,) = router.addLiquidity{value: 10 ether}(
-            key,
-            10 ether,
-            10 ether,
-            0,
-            0,
-            address(this),
-            block.timestamp + 100
-        );
-
-        uint256 ethBefore = address(this).balance;
-        (uint256 a0, uint256 a1) = router.removeLiquidity(
-            key,
-            liq,
-            0,
-            0,
-            address(this),
-            block.timestamp + 100
-        );
-
-        assertGt(a0, 0, "ETH returned");
-        assertGt(a1, 0, "tokenA returned");
-        assertEq(address(this).balance - ethBefore, a0, "balance delta matches");
-    }
-
-    /// @notice Documents that removeLiquidity on a native-ETH pool reverts
-    ///         when `recipient` is a contract that cannot receive ETH.
-    ///         V4's `take` for native currency uses a raw call with value;
-    ///         a non-payable recipient causes the whole tx to revert with
-    ///         V4's `NativeTransferFailed`. The router's NatSpec warns
-    ///         about this; this test pins the behavior.
-    function testRemoveLiquidityRevertsForNonPayableRecipient() public {
-        PoolKey memory key = PoolKey({
-            currency0: Currency.wrap(address(0)),
-            currency1: Currency.wrap(address(tokenA)),
-            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
-            tickSpacing: TICK_SPACING,
-            hooks: IHooks(address(hook))
-        });
-        manager.initialize(key, SQRT_PRICE_1_1);
-
-        (uint128 liq, , ) = router.addLiquidity{value: 5 ether}(
-            key, 5 ether, 5 ether, 0, 0, address(this), block.timestamp + 100
-        );
-
-        NonReceivable bad = new NonReceivable();
-        vm.expectRevert();
-        router.removeLiquidity(key, liq, 0, 0, address(bad), block.timestamp + 100);
-    }
-
     // ---------------------------------------------------------------------
     // Multi-pool isolation
     // ---------------------------------------------------------------------
@@ -200,8 +138,8 @@ contract ParityTest is Test {
         manager.initialize(keyAB, SQRT_PRICE_1_1);
         manager.initialize(keyAC, SQRT_PRICE_1_1);
 
-        router.addLiquidity(keyAB, 1e21, 1e21, 0, 0, address(this), block.timestamp + 100);
-        router.addLiquidity(keyAC, 1e21, 1e21, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(keyAB, 1e21, 1e21, address(this));
+        lp.addLiquidity(keyAC, 1e21, 1e21, address(this));
 
         (uint160 priceAB_pre, , , ) = manager.getSlot0(keyAB.toId());
         (uint160 priceAC_pre, , , ) = manager.getSlot0(keyAC.toId());
@@ -226,13 +164,12 @@ contract ParityTest is Test {
         assertEq(priceAC_post, priceAC_pre, "pool AC price unchanged");
         assertEq(liqAC_post, liqAC_pre, "pool AC liquidity unchanged");
 
-        // LP shares are isolated by poolId
-        uint256 idAB = uint256(PoolId.unwrap(keyAB.toId()));
-        uint256 idAC = uint256(PoolId.unwrap(keyAC.toId()));
-        assertGt(router.balanceOf(address(this), uint256(idAB)), 0);
-        assertGt(router.balanceOf(address(this), uint256(idAC)), 0);
-        // Cross-pool balance is zero
-        assertEq(router.balanceOf(address(0xdead), uint256(idAB)), 0);
+        // LP positions are isolated by (poolId, owner) — V4 stores them
+        // under distinct keys, so this contract has positive liquidity in
+        // both pools but unrelated addresses have nothing.
+        assertGt(lp.positionLiquidity(keyAB, address(this)), 0);
+        assertGt(lp.positionLiquidity(keyAC, address(this)), 0);
+        assertEq(lp.positionLiquidity(keyAB, address(0xdead)), 0);
     }
 
     // ---------------------------------------------------------------------
@@ -253,7 +190,7 @@ contract ParityTest is Test {
     function testExactOutputSingleRevertsWhenAmountInMaxIsZero() public {
         PoolKey memory key = _keyERC20Pair(tokenA, tokenB);
         manager.initialize(key, SQRT_PRICE_1_1);
-        router.addLiquidity(key, 1e21, 1e21, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(key, 1e21, 1e21, address(this));
 
         vm.expectRevert(SpryRouter.ExcessiveInput.selector);
         router.swapExactOutputSingle(
@@ -276,12 +213,6 @@ contract ParityTest is Test {
 
     receive() external payable {}
 }
-
-/// @notice A contract that DOES NOT accept ETH — no `receive()` or
-///         `payable` fallback. Used to test that the router surfaces
-///         a clean revert when a removeLiquidity recipient on a
-///         native-ETH pool cannot accept the payout.
-contract NonReceivable {}
 
 /// @notice Helper that re-enters PoolManager.unlock from within its own
 ///         unlock callback. V4's Lock library uses transient storage and

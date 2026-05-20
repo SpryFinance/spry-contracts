@@ -18,6 +18,7 @@ import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title PermitSupportTest
 /// @notice Validates the router's EIP-2612 `selfPermit` + `multicall`
@@ -29,6 +30,7 @@ contract PermitSupportTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     PermitToken internal token0;
     PermitToken internal token1;
     PoolKey internal key;
@@ -48,6 +50,7 @@ contract PermitSupportTest is Test {
 
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -77,7 +80,9 @@ contract PermitSupportTest is Test {
         token1.mint(address(this), 1e30);
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
-        router.addLiquidity(key, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        token0.approve(address(lp),     type(uint256).max);
+        token1.approve(address(lp),     type(uint256).max);
+        lp.addLiquidity(key, 1e22, 1e22, address(this));
 
         // Mint balances to owner — but do NOT approve the router.
         // The whole point: owner has zero allowance until permit fires.
@@ -142,38 +147,7 @@ contract PermitSupportTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 2. permit + addLiquidity in one call — same UX win for LPs.
-    // ---------------------------------------------------------------------
-    function testPermitPlusAddLiquidity() public {
-        uint256 amount = 5e21;
-        uint256 deadline = block.timestamp + 100;
-
-        // Need permits on BOTH tokens since addLiquidity pulls both sides.
-        (uint8 v0, bytes32 r0, bytes32 s0) = _signPermit(token0, address(router), amount, deadline);
-        (uint8 v1, bytes32 r1, bytes32 s1) = _signPermit(token1, address(router), amount, deadline);
-
-        bytes[] memory calls = new bytes[](3);
-        calls[0] = abi.encodeCall(
-            SpryRouter.selfPermit,
-            (address(token0), amount, deadline, v0, r0, s0)
-        );
-        calls[1] = abi.encodeCall(
-            SpryRouter.selfPermit,
-            (address(token1), amount, deadline, v1, r1, s1)
-        );
-        calls[2] = abi.encodeCall(
-            SpryRouter.addLiquidity,
-            (key, amount, amount, 0, 0, owner, deadline)
-        );
-
-        vm.prank(owner);
-        bytes[] memory results = router.multicall(calls);
-        (uint128 liquidity, , ) = abi.decode(results[2], (uint128, uint256, uint256));
-        assertGt(liquidity, 0, "LP shares minted to owner via permit-bundled path");
-    }
-
-    // ---------------------------------------------------------------------
-    // 3. Expired permit deadline — the selfPermit's try/catch swallows the
+    // 2. Expired permit deadline — the selfPermit's try/catch swallows the
     //    token-level error, so the multicall continues. But the subsequent
     //    swap reverts with the ERC20 allowance failure (no approval was set).
     // ---------------------------------------------------------------------

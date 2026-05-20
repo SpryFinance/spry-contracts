@@ -15,6 +15,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title GasGriefToken
@@ -29,10 +30,12 @@ contract GasGriefToken is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
 
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
             Hooks.BEFORE_SWAP_FLAG,
@@ -79,16 +82,18 @@ contract GasGriefToken is Test {
         deal(address(good2), address(this), 1e30);
         deal(address(good3), address(this), 1e30);
         bad.approve(address(router), type(uint256).max);
+        bad.approve(address(lp),     type(uint256).max);
         good1.approve(address(router), type(uint256).max);
+        good1.approve(address(lp),     type(uint256).max);
         good2.approve(address(router), type(uint256).max);
+        good2.approve(address(lp),     type(uint256).max);
         good3.approve(address(router), type(uint256).max);
+        good3.approve(address(lp),     type(uint256).max);
 
         // Operating on pool B (the healthy one) works fine, even though
         // pool A's token would burn gas if invoked. The shared PoolManager
         // does not share fate across pools.
-        (uint128 liqB, , ) = router.addLiquidity(
-            keyGood, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100
-        );
+        (uint128 liqB, , ) = lp.addLiquidity(keyGood, 1e22, 1e22, address(this));
         assertGt(liqB, 0, "healthy pool add works");
 
         bool zfo = t0b == address(good2);
@@ -101,9 +106,7 @@ contract GasGriefToken is Test {
         // Now try pool A with a limited gas budget. We don't care whether
         // the call reverts or simply runs out of gas — the assertion is
         // that pool B keeps working AFTER pool A's failure.
-        try router.addLiquidity{gas: 5_000_000}(
-            keyBad, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100
-        ) returns (uint128, uint256, uint256) {} catch {}
+        try lp.addLiquidity{gas: 5_000_000}(keyBad, 1e22, 1e22, address(this)) returns (uint128, uint256, uint256) {} catch {}
 
         // Pool B is still usable.
         uint256 out2 = router.swapExactInputSingle(

@@ -19,6 +19,8 @@ import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
+import {LPHelper} from "../utils/LPHelper.sol";
+
 /// @title HookDataForwardingTest
 /// @notice Proves that the bytes `hookData` parameter passed to the
 ///         router's single-hop swap entry points actually reaches the
@@ -30,6 +32,7 @@ contract HookDataForwardingTest is Test {
     IPoolManager internal manager;
     RecorderHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     ERC20Mock internal token0;
     ERC20Mock internal token1;
     PoolKey internal key;
@@ -42,6 +45,7 @@ contract HookDataForwardingTest is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -60,6 +64,8 @@ contract HookDataForwardingTest is Test {
         deal(address(token1), address(this), 1e30);
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
+        token0.approve(address(lp),     type(uint256).max);
+        token1.approve(address(lp),     type(uint256).max);
 
         key = PoolKey({
             currency0: Currency.wrap(address(token0)),
@@ -69,7 +75,7 @@ contract HookDataForwardingTest is Test {
             hooks: IHooks(address(hook))
         });
         manager.initialize(key, SQRT_PRICE_1_1);
-        router.addLiquidity(key, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(key, 1e22, 1e22, address(this));
     }
 
     // ---------------------------------------------------------------------

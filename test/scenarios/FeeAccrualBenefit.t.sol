@@ -20,16 +20,7 @@ contract FeeAccrualBenefit is ScenarioBase {
         uint256 aliceIn1 = 5e20;
 
         // Alice provides her own liquidity in addition to the seed.
-        vm.prank(alice);
-        (uint128 aliceLiq, , ) = router.addLiquidity(
-            key,
-            aliceIn0,
-            aliceIn1,
-            0,
-            0,
-            alice,
-            block.timestamp + 100
-        );
+        (uint128 aliceLiq, , ) = _addLiquidity(alice, aliceIn0, aliceIn1);
         assertGt(aliceLiq, 0, "alice received shares");
 
         // Trader (bob) runs many balanced two-way swaps to generate fee flow
@@ -42,15 +33,7 @@ contract FeeAccrualBenefit is ScenarioBase {
 
         // Alice burns her position.
         (uint256 t0Before, uint256 t1Before, ) = _snapshot(alice);
-        vm.prank(alice);
-        router.removeLiquidity(
-            key,
-            aliceLiq,
-            0,
-            0,
-            alice,
-            block.timestamp + 100
-        );
+        _removeLiquidity(alice, aliceLiq);
         (uint256 t0After, uint256 t1After, ) = _snapshot(alice);
 
         uint256 out0 = t0After - t0Before;

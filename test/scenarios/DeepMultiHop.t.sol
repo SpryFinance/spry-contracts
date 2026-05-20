@@ -14,6 +14,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
@@ -27,10 +28,12 @@ contract DeepMultiHop is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
 
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
             Hooks.BEFORE_SWAP_FLAG,
@@ -62,14 +65,13 @@ contract DeepMultiHop is Test {
             tk[i] = new ERC20Mock();
             deal(address(tk[i]), address(this), 1e30);
             tk[i].approve(address(router), type(uint256).max);
+            tk[i].approve(address(lp),     type(uint256).max);
         }
 
         PoolKey[] memory keys = new PoolKey[](5);
         for (uint256 i = 0; i < 5; ++i) {
             keys[i] = _buildPool(tk[i], tk[i + 1]);
-            router.addLiquidity(
-                keys[i], 1e22, 1e22, 0, 0, address(this), block.timestamp + 100
-            );
+            lp.addLiquidity(keys[i], 1e22, 1e22, address(this));
         }
 
         // Snapshot intermediate balances AFTER seeding (each intermediate
@@ -119,13 +121,12 @@ contract DeepMultiHop is Test {
             tk[i] = new ERC20Mock();
             deal(address(tk[i]), address(this), 1e30);
             tk[i].approve(address(router), type(uint256).max);
+            tk[i].approve(address(lp),     type(uint256).max);
         }
         PoolKey[] memory keys = new PoolKey[](5);
         for (uint256 i = 0; i < 5; ++i) {
             keys[i] = _buildPool(tk[i], tk[i + 1]);
-            router.addLiquidity(
-                keys[i], 1e22, 1e22, 0, 0, address(this), block.timestamp + 100
-            );
+            lp.addLiquidity(keys[i], 1e22, 1e22, address(this));
         }
         PathKey[] memory path = new PathKey[](5);
         for (uint256 i = 0; i < 5; ++i) {

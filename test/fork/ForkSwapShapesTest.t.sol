@@ -16,6 +16,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
@@ -37,6 +38,7 @@ contract ForkSwapShapesTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     ERC20Mock internal tokenA;
     ERC20Mock internal tokenB;
     ERC20Mock internal tokenC;
@@ -67,6 +69,7 @@ contract ForkSwapShapesTest is Test {
 
         manager = IPoolManager(vm.envAddress("V4_POOL_MANAGER"));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         // Three ERC20 mocks for multi-hop + ETH-pair coverage.
         ERC20Mock a = new ERC20Mock();
@@ -81,8 +84,11 @@ contract ForkSwapShapesTest is Test {
         deal(address(tokenC), address(this), 1e30);
         deal(address(this), 1000 ether);
         tokenA.approve(address(router), type(uint256).max);
+        tokenA.approve(address(lp),     type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);
+        tokenB.approve(address(lp),     type(uint256).max);
         tokenC.approve(address(router), type(uint256).max);
+        tokenC.approve(address(lp),     type(uint256).max);
 
         // Mine the hook salt against the LIVE PoolManager address.
         (address predicted, bytes32 salt) = HookMiner.find(
@@ -108,9 +114,9 @@ contract ForkSwapShapesTest is Test {
         manager.initialize(keyBC, SQRT_PRICE_1_1);
         manager.initialize(keyETH, SQRT_PRICE_1_1);
 
-        router.addLiquidity(keyAB, SEED, SEED, 0, 0, address(this), block.timestamp + 100);
-        router.addLiquidity(keyBC, SEED, SEED, 0, 0, address(this), block.timestamp + 100);
-        router.addLiquidity{value: 50 ether}(keyETH, 50 ether, 50 ether, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(keyAB, SEED, SEED, address(this));
+        lp.addLiquidity(keyBC, SEED, SEED, address(this));
+        lp.addLiquidity{value: 50 ether}(keyETH, 50 ether, 50 ether, address(this));
 
         forkActive = true;
     }
@@ -198,14 +204,7 @@ contract ForkSwapShapesTest is Test {
         PoolId pid = keyETH.toId();
         uint128 liq = manager.getLiquidity(pid);
         uint128 burnAmount = uint128(uint256(liq) / 10);
-        (uint256 a0, uint256 a1) = router.removeLiquidity(
-            keyETH,
-            burnAmount,
-            0,
-            0,
-            address(this),
-            block.timestamp + 100
-        );
+        (uint256 a0, uint256 a1) = lp.removeLiquidity(keyETH, burnAmount, address(this), address(this));
         assertGt(a0, 0, "removed ETH");
         assertGt(a1, 0, "removed tokenA");
     }
@@ -262,9 +261,7 @@ contract ForkSwapShapesTest is Test {
         // beyond the setUp seed (which we own).
         uint256 aIn = 1e21;
         uint256 bIn = 1e21;
-        (uint128 liq, , ) = router.addLiquidity(
-            keyBC, aIn, bIn, 0, 0, address(this), block.timestamp + 100
-        );
+        (uint128 liq, , ) = lp.addLiquidity(keyBC, aIn, bIn, address(this));
         assertGt(liq, 0);
 
         // Generate fee flow: a series of balanced round-trip swaps.
@@ -276,9 +273,7 @@ contract ForkSwapShapesTest is Test {
         uint256 bBefore = tokenB.balanceOf(address(this));
         uint256 cBefore = tokenC.balanceOf(address(this));
 
-        (uint256 out0, uint256 out1) = router.removeLiquidity(
-            keyBC, liq, 0, 0, address(this), block.timestamp + 100
-        );
+        (uint256 out0, uint256 out1) = lp.removeLiquidity(keyBC, liq, address(this), address(this));
 
         uint256 b0 = tokenB.balanceOf(address(this)) - bBefore;
         uint256 c0 = tokenC.balanceOf(address(this)) - cBefore;

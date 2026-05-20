@@ -19,11 +19,16 @@ import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {InvariantHandler} from "./InvariantHandler.sol";
 
 /// @notice Top-level invariant suite for the V4 surface. Asserts cross-state
 ///         properties that must hold after any sequence of handler-driven
 ///         random operations (swap/add/remove across multiple actors).
+///         LP positions are tracked per-owner by V4 itself (per-owner salt
+///         on LPHelper), so the invariants here focus on the V4-level
+///         accounting: pool liquidity = sum of per-owner positions, and
+///         the manager stays solvent while any liquidity is present.
 contract Invariants is Test {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -31,16 +36,21 @@ contract Invariants is Test {
     IPoolManager public manager;
     SpryHook public hook;
     SpryRouter public router;
+    LPHelper public lp;
     ERC20Mock public token0;
     ERC20Mock public token1;
     PoolKey public key;
     InvariantHandler public handler;
 
+    address internal seeder;
     int24 internal constant TICK_SPACING = 60;
 
     function setUp() public {
+        seeder = address(this);
+
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         ERC20Mock a = new ERC20Mock();
         ERC20Mock b = new ERC20Mock();
@@ -71,9 +81,11 @@ contract Invariants is Test {
         deal(address(token1), address(this), 1e30);
         token0.approve(address(router), type(uint256).max);
         token1.approve(address(router), type(uint256).max);
-        router.addLiquidity(key, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        token0.approve(address(lp),     type(uint256).max);
+        token1.approve(address(lp),     type(uint256).max);
+        lp.addLiquidity(key, 1e22, 1e22, seeder);
 
-        handler = new InvariantHandler(manager, router, key, token0, token1);
+        handler = new InvariantHandler(manager, router, lp, key, token0, token1);
 
         // Restrict invariant fuzzer to only the handler's external functions.
         bytes4[] memory selectors = new bytes4[](3);
@@ -88,32 +100,14 @@ contract Invariants is Test {
     // Invariants
     // ---------------------------------------------------------------------
 
-    /// @notice Every LP share the router issued must be backed by an equal
-    ///         unit of liquidity in the router's full-range V4 position.
-    function invariant_lpSharesMatchPositionLiquidity() public view {
-        uint256 idBytes = uint256(PoolId.unwrap(key.toId()));
-        uint256 routerSupply = router.totalSupply(uint256(idBytes));
-        bytes32 positionId =
-            keccak256(abi.encodePacked(address(router), TickMath.minUsableTick(TICK_SPACING), TickMath.maxUsableTick(TICK_SPACING), bytes32(0)));
-        uint128 posLiq = manager.getPositionLiquidity(key.toId(), positionId);
-        assertEq(routerSupply, uint256(posLiq), "totalSupply != V4 position liquidity");
-    }
-
-    /// @notice Sum of every actor's ERC6909 LP balance plus the setUp seeder
-    ///         (this contract) must equal the router's totalSupply for the pool.
-    function invariant_sharesAccountForFullSupply() public view {
-        uint256 idBytes = uint256(PoolId.unwrap(key.toId()));
-        uint256 sum = router.balanceOf(address(this), uint256(idBytes));
-        sum += handler.actorSharesSum();
-        assertEq(sum, router.totalSupply(uint256(idBytes)), "actor sum + seeder != totalSupply");
-    }
-
-    /// @notice The pool's reported in-range liquidity must equal the router's
-    ///         total LP shares — only the router owns positions on this pool.
-    function invariant_poolLiquidityEqualsRouterShares() public view {
-        uint256 idBytes = uint256(PoolId.unwrap(key.toId()));
+    /// @notice The pool's in-range liquidity equals the sum of every owner's
+    ///         per-owner V4 position. The seeder (this contract) plus every
+    ///         handler actor must account for the full pool depth.
+    function invariant_poolLiquidityEqualsSumOfPositions() public view {
         uint128 poolLiq = manager.getLiquidity(key.toId());
-        assertEq(uint256(poolLiq), router.totalSupply(uint256(idBytes)), "pool liquidity != router supply");
+        uint256 sum = uint256(lp.positionLiquidity(key, seeder));
+        sum += handler.actorPositionSum();
+        assertEq(uint256(poolLiq), sum, "pool liquidity != sum of per-owner positions");
     }
 
     /// @notice PoolManager must hold at least the unclaimed token amounts

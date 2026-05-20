@@ -15,6 +15,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title ReentrancyAttempt
@@ -28,11 +29,13 @@ contract ReentrancyAttempt is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     PoolKey internal key;
 
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -65,10 +68,12 @@ contract ReentrancyAttempt is Test {
         hostile.mint(address(this), 1e30);
         sane.mint(address(this), 1e30);
         hostile.approve(address(router), type(uint256).max);
+        hostile.approve(address(lp),     type(uint256).max);
         sane.approve(address(router), type(uint256).max);
+        sane.approve(address(lp),     type(uint256).max);
 
         // Add liquidity (hostile token's callback is not yet armed).
-        router.addLiquidity(k, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(k, 1e22, 1e22, address(this));
 
         // Arm the hostile token to re-enter on its next _transfer call.
         hostile.arm(router, k);

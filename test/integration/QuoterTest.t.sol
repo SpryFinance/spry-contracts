@@ -20,6 +20,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title QuoterTest
 /// @notice Validates that v4-periphery's `V4Quoter`, deployed alongside our
@@ -37,6 +38,7 @@ contract QuoterTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     V4Quoter internal quoter;
 
     ERC20Mock internal tokenA;
@@ -53,6 +55,7 @@ contract QuoterTest is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
         quoter = new V4Quoter(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
@@ -75,14 +78,17 @@ contract QuoterTest is Test {
         tokenA.approve(address(router), type(uint256).max);
         tokenB.approve(address(router), type(uint256).max);
         tokenC.approve(address(router), type(uint256).max);
+        tokenA.approve(address(lp),     type(uint256).max);
+        tokenB.approve(address(lp),     type(uint256).max);
+        tokenC.approve(address(lp),     type(uint256).max);
 
         keyAB = _erc20Key(tokenA, tokenB);
         keyBC = _erc20Key(tokenB, tokenC);
         manager.initialize(keyAB, SQRT_PRICE_1_1);
         manager.initialize(keyBC, SQRT_PRICE_1_1);
 
-        router.addLiquidity(keyAB, SEED, SEED, 0, 0, address(this), block.timestamp + 100);
-        router.addLiquidity(keyBC, SEED, SEED, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(keyAB, SEED, SEED, address(this));
+        lp.addLiquidity(keyBC, SEED, SEED, address(this));
     }
 
     function _sortThree(ERC20Mock a, ERC20Mock b, ERC20Mock c)

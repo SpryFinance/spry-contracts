@@ -16,6 +16,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {LPHelper} from "../utils/LPHelper.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 import {SmartFeeLib} from "../../contracts/libs/SmartFeeLib.sol";
 
@@ -34,6 +35,7 @@ contract AsymmetricDecimals is Test {
     IPoolManager internal manager;
     SpryHook internal hook;
     SpryRouter internal router;
+    LPHelper internal lp;
     PoolKey internal key;
     USDC6 internal usdc;
     WETH18 internal weth;
@@ -41,6 +43,7 @@ contract AsymmetricDecimals is Test {
     function setUp() public {
         manager = IPoolManager(new PoolManager(address(this)));
         router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        lp = new LPHelper(manager);
 
         (address predicted, bytes32 salt) = HookMiner.find(
             address(this),
@@ -72,10 +75,12 @@ contract AsymmetricDecimals is Test {
         usdc.mint(address(this), 1e30);
         weth.mint(address(this), 1e30);
         usdc.approve(address(router), type(uint256).max);
+        usdc.approve(address(lp),     type(uint256).max);
         weth.approve(address(router), type(uint256).max);
+        weth.approve(address(lp),     type(uint256).max);
 
         // Add a moderately-sized full-range position.
-        router.addLiquidity(key, 1e22, 1e22, 0, 0, address(this), block.timestamp + 100);
+        lp.addLiquidity(key, 1e22, 1e22, address(this));
     }
 
     function _initSqrtPrice() internal view returns (uint160) {
