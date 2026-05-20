@@ -25,7 +25,6 @@ import {SpryRouter} from "../../contracts/SpryRouter.sol";
 ///         Same opt-in mechanism as `ForkTest`:
 ///           FORK_RPC_URL      - JSON-RPC endpoint (required to activate)
 ///           V4_POOL_MANAGER   - canonical PoolManager address on that chain
-///           FORK_BLOCK        - optional pinned block (0 = latest)
 ///         When `FORK_RPC_URL` is empty every test in this file returns
 ///         immediately and Foundry records them as passing, so default
 ///         `forge test` stays green offline.

@@ -19,6 +19,10 @@ import {ERC20} from "solmate/src/tokens/ERC20.sol";
 import {ERC6909} from "solmate/src/tokens/ERC6909.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 
+import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
+
+import {Multicall_v4} from "v4-periphery/src/base/Multicall_v4.sol";
+
 /// @title SpryRouter
 /// @notice Periphery router for swaps and liquidity management on Spry pools.
 ///         Exposes a compact, ergonomic API (exact-in / exact-out single-hop,
@@ -31,7 +35,7 @@ import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 ///         ERC20 tolerance) are pulled in from solmate rather than rolled
 ///         by hand — both are widely audited and already part of the V4
 ///         core's dependency tree (PoolManager itself inherits ERC6909).
-contract SpryRouter is IUnlockCallback, ERC6909 {
+contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4 {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
     using SafeTransferLib for ERC20;
@@ -135,6 +139,31 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
     }
 
     receive() external payable {}
+
+    /// @notice Forward an EIP-2612 permit signature to a permit-enabled ERC20.
+    ///         The token is told that `msg.sender` authorizes the router to
+    ///         spend `value` of their balance until `deadline`, using the
+    ///         supplied signature. Designed to be chained with a subsequent
+    ///         swap or addLiquidity call in a single tx via `multicall`,
+    ///         saving the user a separate `approve` transaction.
+    /// @dev    `msg.sender` here is the original caller (multicall delegates
+    ///         into this contract via DELEGATECALL, preserving msg.sender).
+    ///         Wraps the call in try/catch so a front-run permit attack
+    ///         (someone else submits the same signature first, causing the
+    ///         token's permit() to revert with "permit: invalid signature"
+    ///         due to nonce bump) cannot DoS a multicall pipeline. If the
+    ///         allowance is already set, the subsequent swap still succeeds.
+    function selfPermit(
+        address token,
+        uint256 value,
+        uint256 deadline,
+        uint8 v,
+        bytes32 r,
+        bytes32 s
+    ) external payable {
+        try IERC20Permit(token).permit(msg.sender, address(this), value, deadline, v, r, s) {}
+        catch {}
+    }
 
     /// @dev Snapshot of the router's ETH balance excluding the current call's
     ///      `msg.value`. Used by every payable entry point to refund only
