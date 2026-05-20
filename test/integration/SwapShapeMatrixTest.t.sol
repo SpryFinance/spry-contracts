@@ -17,6 +17,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title SwapShapeMatrixTest
@@ -170,15 +171,15 @@ contract SwapShapeMatrixTest is Test {
         uint256 bBefore = tokenB.balanceOf(address(this));
         uint256 ethBefore = address(this).balance;
 
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(0)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
@@ -287,15 +288,15 @@ contract SwapShapeMatrixTest is Test {
     function testCyclePathLosesValueButCompletes() public {
         uint256 aBefore = tokenA.balanceOf(address(this));
 
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenA)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
@@ -328,15 +329,15 @@ contract SwapShapeMatrixTest is Test {
         uint256 bBefore = tokenB.balanceOf(address(this));
         uint256 wanted = 1e18;
 
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenC)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
@@ -363,15 +364,15 @@ contract SwapShapeMatrixTest is Test {
     // 9. Multi-hop exact-output reverts on amountInMax violation.
     // ---------------------------------------------------------------------
     function testMultiHopExactOutputAmountInMaxReverts() public {
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenC)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
@@ -394,7 +395,7 @@ contract SwapShapeMatrixTest is Test {
     // 10. Multi-hop exact-output with empty path reverts.
     // ---------------------------------------------------------------------
     function testMultiHopExactOutputEmptyPathReverts() public {
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](0);
+        PathKey[] memory path = new PathKey[](0);
         vm.expectRevert(SpryRouter.EmptyPath.selector);
         router.swapExactOutput(
             Currency.wrap(address(tokenA)),

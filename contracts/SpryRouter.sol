@@ -24,6 +24,7 @@ import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC2
 import {Multicall_v4} from "v4-periphery/src/base/Multicall_v4.sol";
 import {Permit2Forwarder} from "v4-periphery/src/base/Permit2Forwarder.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
+import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 
 /// @title SpryRouter
 /// @notice Periphery router for swaps and liquidity management on Spry pools.
@@ -85,21 +86,18 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         bytes hookData;
     }
 
-    /// @notice One hop in a multi-hop path. `intermediateCurrency` is the
-    ///         token we're swapping INTO at this step. The previous step's
-    ///         intermediate (or the user's input currency, for hop 0)
+    /// @notice One hop in a multi-hop path is described by the canonical
+    ///         `PathKey` type from v4-periphery: `intermediateCurrency` is
+    ///         the token we're swapping INTO at this step; the previous
+    ///         step's intermediate (or the user's input currency, for hop 0)
     ///         supplies the from-side currency.
-    struct PathHop {
-        Currency intermediateCurrency;
-        uint24 fee;
-        int24 tickSpacing;
-        IHooks hooks;
-        bytes hookData;
-    }
+    /// @dev    Using `PathKey` directly (instead of a local clone) means the
+    ///         same struct works for both swaps through this router and
+    ///         quotes through V4Quoter — integrators only learn one shape.
 
     struct MultiInputData {
         Currency currencyIn;
-        PathHop[] path;
+        PathKey[] path;
         uint256 amountIn;
         address payer;
         address recipient;
@@ -107,14 +105,14 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     }
 
     /// @notice Multi-hop exact-output payload. The forward `path` is the
-    ///         same shape as `MultiInputData`: each PathHop's
+    ///         same shape as `MultiInputData`: each PathKey's
     ///         intermediateCurrency is the OUTPUT of that hop.
     ///         `currencyIn` is the user's payment side; `amountOut`
     ///         is the exact amount of `path[last].intermediateCurrency`
     ///         the user wants to receive.
     struct MultiOutputData {
         Currency currencyIn;
-        PathHop[] path;
+        PathKey[] path;
         uint256 amountOut;
         address payer;
         address recipient;
@@ -335,7 +333,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///         For a single-hop swap, prefer `swapExactInputSingle` (lower gas).
     function swapExactInput(
         Currency currencyIn,
-        PathHop[] calldata path,
+        PathKey[] calldata path,
         uint256 amountIn,
         uint256 amountOutMin,
         address recipient,
@@ -364,7 +362,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///         swapExactInputSingleViaPermit2 for the prerequisites.
     function swapExactInputViaPermit2(
         Currency currencyIn,
-        PathHop[] calldata path,
+        PathKey[] calldata path,
         uint256 amountIn,
         uint256 amountOutMin,
         address recipient,
@@ -398,7 +396,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     /// @param  currencyIn the user pays from this currency (= the first
     ///                    hop's input side)
     /// @param  path       same forward path representation as `swapExactInput`:
-    ///                    each PathHop's intermediateCurrency is that hop's
+    ///                    each PathKey's intermediateCurrency is that hop's
     ///                    OUTPUT. path[last].intermediateCurrency is the
     ///                    final output the user wants.
     /// @param  amountOut  exact amount of path[last].intermediateCurrency
@@ -406,7 +404,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     /// @param  amountInMax revert ceiling on the input amount the user pays
     function swapExactOutput(
         Currency currencyIn,
-        PathHop[] calldata path,
+        PathKey[] calldata path,
         uint256 amountOut,
         uint256 amountInMax,
         address recipient,
@@ -435,7 +433,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///         swapExactInputSingleViaPermit2 for the prerequisites.
     function swapExactOutputViaPermit2(
         Currency currencyIn,
-        PathHop[] calldata path,
+        PathKey[] calldata path,
         uint256 amountOut,
         uint256 amountInMax,
         address recipient,
@@ -728,7 +726,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint128 lastOutput;
 
         for (uint256 i = 0; i < data.path.length; i++) {
-            PathHop memory hop = data.path[i];
+            PathKey memory hop = data.path[i];
             Currency currentOut = hop.intermediateCurrency;
 
             bool zeroForOne = Currency.unwrap(currentIn) < Currency.unwrap(currentOut);
@@ -782,7 +780,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     // Internal: multi-hop exact-output executor
     //
     // The user provides the SAME forward path representation as exact-input
-    // (each PathHop's intermediateCurrency is the OUTPUT of that hop) plus
+    // (each PathKey's intermediateCurrency is the OUTPUT of that hop) plus
     // the desired final output amount. The executor walks the path in
     // REVERSE: the last hop runs first with `amountSpecified = +amountOut`,
     // and the input amount it required becomes the exact-output target for
@@ -819,7 +817,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///      the no-via_ir limit. Runs a single exact-output hop and returns
     ///      the input amount the swap consumed.
     function _runExactOutHop(
-        PathHop memory hop,
+        PathKey memory hop,
         Currency currentIn,
         Currency currentOut,
         int256 amountSpecified

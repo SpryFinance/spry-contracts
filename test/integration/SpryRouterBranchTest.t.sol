@@ -15,6 +15,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @notice Coverage suite for the router's remaining branches: ETH refund
@@ -140,15 +141,15 @@ contract SpryRouterBranchTest is Test {
     function testMultiHopNativeETHInput() public {
         // Add a tokenA/tokenB pool seeded so we can do ETH -> A -> B.
         // (already done in setUp for both pools)
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenA)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,

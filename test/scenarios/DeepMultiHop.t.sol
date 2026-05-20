@@ -14,6 +14,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title DeepMultiHop
@@ -77,9 +78,9 @@ contract DeepMultiHop is Test {
         for (uint256 i = 0; i < 6; ++i) before[i] = tk[i].balanceOf(address(this));
 
         // Build the multi-hop path A -> B -> C -> D -> E -> F.
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](5);
+        PathKey[] memory path = new PathKey[](5);
         for (uint256 i = 0; i < 5; ++i) {
-            path[i] = SpryRouter.PathHop({
+            path[i] = PathKey({
                 intermediateCurrency: Currency.wrap(address(tk[i + 1])),
                 fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
                 tickSpacing: 60,
@@ -126,9 +127,9 @@ contract DeepMultiHop is Test {
                 keys[i], 1e22, 1e22, 0, 0, address(this), block.timestamp + 100
             );
         }
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](5);
+        PathKey[] memory path = new PathKey[](5);
         for (uint256 i = 0; i < 5; ++i) {
-            path[i] = SpryRouter.PathHop({
+            path[i] = PathKey({
                 intermediateCurrency: Currency.wrap(address(tk[i + 1])),
                 fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
                 tickSpacing: 60,

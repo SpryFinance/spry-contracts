@@ -16,6 +16,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 /// @title ForkSwapShapesTest
@@ -217,15 +218,15 @@ contract ForkSwapShapesTest is Test {
         uint256 cBefore = tokenC.balanceOf(address(this));
         uint256 bBefore = tokenB.balanceOf(address(this));
 
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenC)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,

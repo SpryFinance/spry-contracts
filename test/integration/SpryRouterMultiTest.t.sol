@@ -19,6 +19,7 @@ import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 import {SpryHook} from "../../contracts/SpryHook.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
+import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol";
 
 contract SpryRouterMultiTest is Test {
@@ -107,15 +108,15 @@ contract SpryRouterMultiTest is Test {
     // Multi-hop swap A → B → C
     // ---------------------------------------------------------------------
     function testTwoHopAtoBtoC() public {
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenC)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
@@ -144,15 +145,15 @@ contract SpryRouterMultiTest is Test {
     }
 
     function testTwoHopCtoBtoA() public {
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenA)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
@@ -181,8 +182,8 @@ contract SpryRouterMultiTest is Test {
     // Degenerate path: length 1 should work identically to single-hop
     // ---------------------------------------------------------------------
     function testSingleHopViaMultiAPI() public {
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](1);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](1);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
@@ -203,7 +204,7 @@ contract SpryRouterMultiTest is Test {
     }
 
     function testEmptyPathReverts() public {
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](0);
+        PathKey[] memory path = new PathKey[](0);
         vm.expectRevert(SpryRouter.EmptyPath.selector);
         router.swapExactInput(
             Currency.wrap(address(tokenA)),
@@ -216,15 +217,15 @@ contract SpryRouterMultiTest is Test {
     }
 
     function testMultiHopSlippageReverts() public {
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](2);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](2);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
-        path[1] = SpryRouter.PathHop({
+        path[1] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenC)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
@@ -244,8 +245,8 @@ contract SpryRouterMultiTest is Test {
     }
 
     function testMultiHopDeadlineReverts() public {
-        SpryRouter.PathHop[] memory path = new SpryRouter.PathHop[](1);
-        path[0] = SpryRouter.PathHop({
+        PathKey[] memory path = new PathKey[](1);
+        path[0] = PathKey({
             intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
