@@ -66,6 +66,12 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///         only by astronomically large values; the guard exists for
     ///         defense-in-depth.
     error Permit2AmountOverflow();
+    /// @notice `recipient` cannot be the router itself. The router has no
+    ///         admin / sweep / rescue function, so tokens delivered to it
+    ///         are permanently stuck. ETH-output swaps would self-recover
+    ///         via the refund path, but ERC20 outputs would not — rejecting
+    ///         uniformly is the only safe default.
+    error InvalidRecipient();
 
     // Tags for the unlock callback's tagged-union payload.
     uint8 internal constant TAG_SINGLE = 1;
@@ -214,6 +220,15 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         if (Currency.unwrap(c) == address(0)) revert Permit2NativeUnsupported();
     }
 
+    /// @dev Reverts with `InvalidRecipient` if `recipient` is this router.
+    ///      Tokens delivered to the router cannot be recovered (no admin,
+    ///      no sweep). Every external entry point that takes a recipient
+    ///      pipes it through this guard so a typo or buggy frontend can't
+    ///      silently sink funds.
+    function _assertRecipient(address recipient) internal view {
+        if (recipient == address(this)) revert InvalidRecipient();
+    }
+
     // ---------------------------------------------------------------------
     // Single-hop user entry points
     // ---------------------------------------------------------------------
@@ -227,6 +242,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline,
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountOut) {
+        _assertRecipient(recipient);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
             kind: Kind.ExactInputSingle,
@@ -256,6 +272,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline,
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountIn) {
+        _assertRecipient(recipient);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
             kind: Kind.ExactOutputSingle,
@@ -291,6 +308,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline,
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountOut) {
+        _assertRecipient(recipient);
         _assertNotNative(zeroForOne ? key.currency0 : key.currency1);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
@@ -323,6 +341,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline,
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountIn) {
+        _assertRecipient(recipient);
         _assertNotNative(zeroForOne ? key.currency0 : key.currency1);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
@@ -360,6 +379,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountOut) {
+        _assertRecipient(recipient);
         if (path.length == 0) revert EmptyPath();
         uint256 priorBal = _ethPriorBalance();
 
@@ -389,6 +409,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountOut) {
+        _assertRecipient(recipient);
         if (path.length == 0) revert EmptyPath();
         _assertNotNative(currencyIn);
         uint256 priorBal = _ethPriorBalance();
@@ -435,6 +456,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountIn) {
+        _assertRecipient(recipient);
         if (path.length == 0) revert EmptyPath();
         uint256 priorBal = _ethPriorBalance();
 
@@ -464,6 +486,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountIn) {
+        _assertRecipient(recipient);
         if (path.length == 0) revert EmptyPath();
         // path[0].intermediateCurrency is the user's input under the V4
         // reverse-path convention; reject native ETH there since Permit2
@@ -505,6 +528,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
+        _assertRecipient(recipient);
         // The actual `liquidity` value is computed inside the unlock callback
         // (which has fresh stack space). The outer function only packs args
         // and dispatches, keeping the live-variable count well under 16 to
@@ -543,6 +567,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
+        _assertRecipient(recipient);
         // V4's currency-sort invariant means only currency0 can ever be
         // native ETH (address(0) sorts strictly first); checking it suffices.
         _assertNotNative(key.currency0);
@@ -592,6 +617,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address recipient,
         uint256 deadline
     ) external ensure(deadline) returns (uint256 amount0, uint256 amount1) {
+        _assertRecipient(recipient);
         _burn(msg.sender, uint256(PoolId.unwrap(key.toId())), uint256(liquidity));
 
         LiquidityData memory d = LiquidityData({
