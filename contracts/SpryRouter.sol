@@ -61,6 +61,11 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///         about ERC20s. Raised when a *ViaPermit2 entry point is asked
     ///         to settle a native-ETH leg.
     error Permit2NativeUnsupported();
+    /// @notice Permit2.transferFrom expects a uint160 amount. Raised when an
+    ///         amount that would silently truncate is encountered. Reachable
+    ///         only by astronomically large values; the guard exists for
+    ///         defense-in-depth.
+    error Permit2AmountOverflow();
 
     // Tags for the unlock callback's tagged-union payload.
     uint8 internal constant TAG_SINGLE = 1;
@@ -202,6 +207,13 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         }
     }
 
+    /// @dev Reverts with `Permit2NativeUnsupported` if `c` is native ETH.
+    ///      `*ViaPermit2` entry points use this to fail fast at the entry
+    ///      point boundary rather than after a wasted unlock round-trip.
+    function _assertNotNative(Currency c) internal pure {
+        if (Currency.unwrap(c) == address(0)) revert Permit2NativeUnsupported();
+    }
+
     // ---------------------------------------------------------------------
     // Single-hop user entry points
     // ---------------------------------------------------------------------
@@ -279,6 +291,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline,
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountOut) {
+        _assertNotNative(zeroForOne ? key.currency0 : key.currency1);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
             kind: Kind.ExactInputSingle,
@@ -310,6 +323,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline,
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountIn) {
+        _assertNotNative(zeroForOne ? key.currency0 : key.currency1);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
             kind: Kind.ExactOutputSingle,
@@ -376,6 +390,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountOut) {
         if (path.length == 0) revert EmptyPath();
+        _assertNotNative(currencyIn);
         uint256 priorBal = _ethPriorBalance();
 
         MultiInputData memory data = MultiInputData({
@@ -450,6 +465,10 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountIn) {
         if (path.length == 0) revert EmptyPath();
+        // path[0].intermediateCurrency is the user's input under the V4
+        // reverse-path convention; reject native ETH there since Permit2
+        // can't mediate it.
+        _assertNotNative(path[0].intermediateCurrency);
         uint256 priorBal = _ethPriorBalance();
 
         MultiOutputData memory data = MultiOutputData({
@@ -524,6 +543,9 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
+        // V4's currency-sort invariant means only currency0 can ever be
+        // native ETH (address(0) sorts strictly first); checking it suffices.
+        _assertNotNative(key.currency0);
         uint256 priorBal = _ethPriorBalance();
         {
             LiquidityData memory d = LiquidityData({
@@ -554,6 +576,14 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     /// @notice Burns ERC6909 LP shares from msg.sender and returns the
     ///         proportional token amounts to `recipient`. Slippage on each
     ///         currency enforced via amount{0,1}Min.
+    /// @dev    If the pool's currency0 is native ETH (address(0)) then
+    ///         `recipient` MUST be an EOA or a contract that can receive
+    ///         ETH (i.e. has a `receive()` or payable fallback). The
+    ///         V4 PoolManager's `take()` performs a raw call with value;
+    ///         a non-payable contract recipient will cause the entire
+    ///         `removeLiquidity` call to revert with V4's
+    ///         `NativeTransferFailed`. The same caveat applies to any
+    ///         downstream pool whose currency0 is native ETH.
     function removeLiquidity(
         PoolKey calldata key,
         uint128 liquidity,
@@ -884,6 +914,11 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     /// @param usePermit2 when true, ERC20 transfers route through
     ///                   `Permit2.transferFrom` instead of the token's own
     ///                   allowance ledger. Native-ETH legs ignore the flag.
+    /// @dev The `payer == address(this)` branch present in earlier revisions
+    ///      was removed: across every code path that reaches `_settle`,
+    ///      `data.payer` is set to `msg.sender` (or `address(0)` for
+    ///      `removeLiquidity`, which never calls `_settle`). The router
+    ///      itself never owes a settle on its own behalf.
     function _settle(Currency currency, address payer, uint256 amount, bool usePermit2) internal {
         if (amount == 0) return;
         POOL_MANAGER.sync(currency);
@@ -895,13 +930,12 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
             POOL_MANAGER.settle{value: amount}();
         } else {
             address tokenAddr = Currency.unwrap(currency);
-            if (payer == address(this)) {
-                ERC20(tokenAddr).safeTransfer(address(POOL_MANAGER), amount);
-            } else if (usePermit2) {
+            if (usePermit2) {
                 // Permit2's transferFrom requires the caller (this router)
                 // to have a Permit2-recorded allowance from `payer`. The
                 // user typically grants it via `router.permit(...)` in the
                 // same multicall right before the swap.
+                if (amount > type(uint160).max) revert Permit2AmountOverflow();
                 permit2.transferFrom(payer, address(POOL_MANAGER), uint160(amount), tokenAddr);
             } else {
                 ERC20(tokenAddr).safeTransferFrom(payer, address(POOL_MANAGER), amount);

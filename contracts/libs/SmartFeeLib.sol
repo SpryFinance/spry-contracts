@@ -110,9 +110,32 @@ library SmartFeeLib {
         }
     }
 
-    /// @dev Three-zone fee dispatch. delta is computed directly from one
-    ///      reserve and the swap amount (never dividing by the opposite
-    ///      reserve), which is well-defined at every reserve ratio.
+    /// @dev Three-zone fee dispatch. `delta` is the per-mille reserve-shift
+    ///      indicator for this swap. Two cases:
+    ///
+    ///        amount0Out > 0  (token0 leaves the pool, e.g. one-for-zero):
+    ///            delta = +(1000 * amount0Out) / reserve0
+    ///
+    ///        amount1Out > 0  (token1 leaves the pool, e.g. zero-for-one):
+    ///            delta = -(1000 * amount1Out) / (reserve1 + amount1Out)
+    ///
+    ///      The two formulas are NOT mirror images: the negative case
+    ///      divides by `(reserve1 + amount1Out)`, the positive case does
+    ///      not. This asymmetry pairs with the asymmetric zone bounds
+    ///      below (`safe ∈ [-250, +334]`) and the coefficient pairs
+    ///      (`A_LEFT, B_LEFT` ≠ −(`A_RIGHT, B_RIGHT`)) so that the
+    ///      linear-zone formula evaluates to EXACTLY:
+    ///
+    ///          _linear(A_LEFT,  B_LEFT,  -250) =  3 bps  (safe boundary)
+    ///          _linear(A_LEFT,  B_LEFT,  -500) = 20 bps  (alert→danger)
+    ///          _linear(A_RIGHT, B_RIGHT, +334) =  3 bps  (after int trunc)
+    ///          _linear(A_RIGHT, B_RIGHT, +1000)= 20 bps  (alert→danger)
+    ///
+    ///      i.e. the curve is continuous at all zone transitions in spite
+    ///      of the asymmetric algebra. `SmartFeeLibTest.t.sol` pins these
+    ///      transitions with explicit boundary tests so any future change
+    ///      to the coefficients or the delta formula trips a regression.
+    ///
     ///      Returns the fee in bps of 1000 (0..55).
     function _getCorrectedFee(
         uint256 reserve0,

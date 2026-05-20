@@ -165,6 +165,31 @@ contract ParityTest is Test {
         assertEq(address(this).balance - ethBefore, a0, "balance delta matches");
     }
 
+    /// @notice Documents that removeLiquidity on a native-ETH pool reverts
+    ///         when `recipient` is a contract that cannot receive ETH.
+    ///         V4's `take` for native currency uses a raw call with value;
+    ///         a non-payable recipient causes the whole tx to revert with
+    ///         V4's `NativeTransferFailed`. The router's NatSpec warns
+    ///         about this; this test pins the behavior.
+    function testRemoveLiquidityRevertsForNonPayableRecipient() public {
+        PoolKey memory key = PoolKey({
+            currency0: Currency.wrap(address(0)),
+            currency1: Currency.wrap(address(tokenA)),
+            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(hook))
+        });
+        manager.initialize(key, SQRT_PRICE_1_1);
+
+        (uint128 liq, , ) = router.addLiquidity{value: 5 ether}(
+            key, 5 ether, 5 ether, 0, 0, address(this), block.timestamp + 100
+        );
+
+        NonReceivable bad = new NonReceivable();
+        vm.expectRevert();
+        router.removeLiquidity(key, liq, 0, 0, address(bad), block.timestamp + 100);
+    }
+
     // ---------------------------------------------------------------------
     // Multi-pool isolation
     // ---------------------------------------------------------------------
@@ -251,6 +276,12 @@ contract ParityTest is Test {
 
     receive() external payable {}
 }
+
+/// @notice A contract that DOES NOT accept ETH — no `receive()` or
+///         `payable` fallback. Used to test that the router surfaces
+///         a clean revert when a removeLiquidity recipient on a
+///         native-ETH pool cannot accept the payout.
+contract NonReceivable {}
 
 /// @notice Helper that re-enters PoolManager.unlock from within its own
 ///         unlock callback. V4's Lock library uses transient storage and

@@ -178,4 +178,71 @@ contract SmartFeeLibTest is Test {
         // Just assert it returns *something* sane; the bug would have panicked.
         assertLe(fee, 55_000);
     }
+
+    // ---------------------------------------------------------------------
+    // Boundary continuity — the linear-zone coefficients are tuned so the
+    // curve is continuous at every safe<->alert<->danger transition in
+    // spite of the asymmetric delta formula. These tests pin that
+    // property: any future change to A_*, B_*, or the delta formula that
+    // breaks continuity will trip a regression.
+    // ---------------------------------------------------------------------
+
+    /// @dev At delta = -250 (safe<->left-alert boundary) the fee must be
+    ///      EXACTLY 3 bps (3000 pips) from either side of the dispatch.
+    ///      Construct a swap that lands at delta = -250 by solving
+    ///      `-1000 * x / (R + x) = -250` → x = R/3.
+    function testFeeContinuousAtLeftSafeAlertBoundary() public pure {
+        // R = 1500 picked so x = 500 makes delta = -1000 * 500 / 2000 = -250.
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1500, true, int256(500));
+        assertEq(fee, 3_000, "safe-zone fee at delta = -250");
+    }
+
+    /// @dev At delta = +334 (safe<->right-alert boundary) the fee must be
+    ///      3 bps (truncated). Construct delta = +334 via amount0Out = 334
+    ///      against reserve0 = 1000 (`+1000 * 334 / 1000 = 334`).
+    function testFeeContinuousAtRightSafeAlertBoundary() public pure {
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(334));
+        assertEq(fee, 3_000, "safe-zone fee at delta = +334");
+    }
+
+    /// @dev Just past the boundary (delta = -251) the left-alert linear
+    ///      formula must still return ~3 bps (3 after integer truncation,
+    ///      no jump). Verifies the safe<->alert kink is at the bps-of-1000
+    ///      grid resolution, not a real discontinuity.
+    function testFeeNoJumpJustPastLeftSafeBoundary() public pure {
+        // R chosen so delta = -1000 * 1000 / 3990 = -250.xxx → -250 (still safe)
+        // and a second swap producing -251 (alert) → first iter of linear.
+        // Simpler: at the alert side just inside, compute the linear fee.
+        // amount1Out=251 against R1=750 gives delta = -1000 * 251 / 1001 = -250.xxx (still safe?)
+        // We construct explicitly with amount/(R+amount) ratio = 251/1000:
+        // amount = 251, R = 749 -> delta = -1000 * 251 / 1000 = -251. Alert.
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 749, true, int256(251));
+        // _linear(-68000, -14000, -251) = (17068000 - 14000000)/1e6 = 3 (truncated).
+        assertEq(fee, 3_000, "linear fee at delta = -251 still truncates to 3 bps");
+    }
+
+    /// @dev At delta = -500 (alert<->danger boundary) the linear formula
+    ///      must return exactly 20 bps (20_000 pips).
+    function testFeeContinuousAtLeftAlertDangerBoundary() public pure {
+        // amount/(R+amount)=500/1000 → amount = R, so set R=1000, amount=1000.
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(1000));
+        assertEq(fee, 20_000, "alert->danger fee at delta = -500 is 20 bps");
+    }
+
+    /// @dev At delta = +1000 (alert<->danger boundary) the linear formula
+    ///      must return exactly 20 bps. amount0Out = R, delta = +1000.
+    function testFeeContinuousAtRightAlertDangerBoundary() public pure {
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(1000));
+        assertEq(fee, 20_000, "alert->danger fee at delta = +1000 is 20 bps");
+    }
+
+    /// @dev Outside the configured exp-zone caps the fallback returns
+    ///      EXACTLY 55 bps. Spot-check the right tail (delta > 5000).
+    ///      The right danger zone covers (1000, 5000]; anything beyond
+    ///      hits the fallback.
+    function testFeeFallbackAtRightCap() public pure {
+        // amount0Out > 5*R produces delta > 5000.
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(5001));
+        assertEq(fee, 55_000, "fallback fee 55 bps fires past delta = 5000");
+    }
 }
