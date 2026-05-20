@@ -8,7 +8,7 @@ import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 
 import {SpryHook} from "../contracts/SpryHook.sol";
 import {SpryRouter} from "../contracts/SpryRouter.sol";
-import {HookMiner} from "../contracts/HookMiner.sol";
+import {HookMiner} from "./HookMiner.sol";
 
 /// @title DeploySpry
 /// @notice Deploys SpryHook (at a salt-mined CREATE2 address that encodes

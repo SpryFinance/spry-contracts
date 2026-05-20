@@ -21,7 +21,7 @@ import {PoolSwapTest} from "v4-core/src/test/PoolSwapTest.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 import {SpryHook} from "../../contracts/SpryHook.sol";
-import {HookMiner} from "../../contracts/HookMiner.sol";
+import {HookMiner} from "../../script/HookMiner.sol";
 import {SmartFeeLib} from "../../contracts/libs/SmartFeeLib.sol";
 
 contract SpryHookTest is Test {

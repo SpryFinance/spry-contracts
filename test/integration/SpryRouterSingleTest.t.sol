@@ -17,7 +17,7 @@ import {PoolModifyLiquidityTest} from "v4-core/src/test/PoolModifyLiquidityTest.
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 import {SpryHook} from "../../contracts/SpryHook.sol";
-import {HookMiner} from "../../contracts/HookMiner.sol";
+import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 
 contract SpryRouterSingleTest is Test {

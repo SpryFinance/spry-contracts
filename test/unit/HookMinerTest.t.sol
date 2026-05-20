@@ -4,7 +4,7 @@ pragma solidity ^0.8.26;
 import "forge-std/Test.sol";
 import {Hooks} from "v4-core/src/libraries/Hooks.sol";
 
-import {HookMiner} from "../../contracts/HookMiner.sol";
+import {HookMiner} from "../../script/HookMiner.sol";
 
 /// @dev A minimal contract that HookMiner can deploy via CREATE2. Constructor
 ///      takes a single uint256 so we can vary constructorArgs in tests.

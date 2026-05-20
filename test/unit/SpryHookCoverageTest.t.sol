@@ -15,7 +15,7 @@ import {LPFeeLibrary} from "v4-core/src/libraries/LPFeeLibrary.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 import {SpryHook} from "../../contracts/SpryHook.sol";
-import {HookMiner} from "../../contracts/HookMiner.sol";
+import {HookMiner} from "../../script/HookMiner.sol";
 
 /// @notice Pure-coverage suite: exercises every no-op IHooks entry point on
 ///         SpryHook (impersonating PoolManager) so their selector returns

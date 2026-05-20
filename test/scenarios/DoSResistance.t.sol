@@ -13,7 +13,7 @@ import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ERC20Mock} from "@openzeppelin/contracts/mocks/ERC20Mock.sol";
 
 import {SpryHook} from "../../contracts/SpryHook.sol";
-import {HookMiner} from "../../contracts/HookMiner.sol";
+import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 
 /// @title DoSResistance

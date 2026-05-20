@@ -14,7 +14,7 @@ import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import {SpryHook} from "../../contracts/SpryHook.sol";
-import {HookMiner} from "../../contracts/HookMiner.sol";
+import {HookMiner} from "../../script/HookMiner.sol";
 import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {SmartFeeLib} from "../../contracts/libs/SmartFeeLib.sol";
 
