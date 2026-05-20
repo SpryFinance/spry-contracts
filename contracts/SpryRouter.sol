@@ -15,8 +15,9 @@ import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
 import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
 import {LiquidityAmounts} from "v4-periphery/src/libraries/LiquidityAmounts.sol";
 
-import {SafeTransfer} from "./libs/SafeTransfer.sol";
-import {ModifiedERC6909} from "./ModifiedERC6909.sol";
+import {ERC20} from "solmate/src/tokens/ERC20.sol";
+import {ERC6909} from "solmate/src/tokens/ERC6909.sol";
+import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 
 /// @title SpryRouter
 /// @notice Periphery router for swaps and liquidity management on Spry pools.
@@ -24,12 +25,21 @@ import {ModifiedERC6909} from "./ModifiedERC6909.sol";
 ///         unbounded multi-hop, add/remove liquidity), slippage and deadline
 ///         guards, and first-class native-ETH support. Every external call
 ///         translates into a single PoolManager.unlock callback. Also tracks
-///         per-user full-range LP shares as ERC6909-shaped per-id balances
-///         so add/removeLiquidity round-trips behave like a standard router.
-contract SpryRouter is IUnlockCallback, ModifiedERC6909 {
+///         per-user full-range LP shares via solmate's ERC6909 so
+///         add/removeLiquidity round-trips behave like a standard router.
+/// @dev    ERC6909 (multi-token ledger) and SafeTransferLib (non-standard
+///         ERC20 tolerance) are pulled in from solmate rather than rolled
+///         by hand — both are widely audited and already part of the V4
+///         core's dependency tree (PoolManager itself inherits ERC6909).
+contract SpryRouter is IUnlockCallback, ERC6909 {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
-    using SafeTransfer for address;
+    using SafeTransferLib for ERC20;
+
+    /// @notice Total minted minus burned per token-id, mirroring the V4
+    ///         in-range liquidity backing that id's LP shares. Tracked
+    ///         explicitly here because solmate's bare ERC6909 doesn't.
+    mapping(uint256 id => uint256) public totalSupply;
 
     error Expired();
     error InsufficientOutput();
@@ -164,7 +174,7 @@ contract SpryRouter is IUnlockCallback, ModifiedERC6909 {
 
         if (msg.value > 0) {
             uint256 bal = address(this).balance;
-            if (bal > 0) SafeTransfer.safeTransferETH(msg.sender, bal);
+            if (bal > 0) SafeTransferLib.safeTransferETH(msg.sender, bal);
         }
     }
 
@@ -235,11 +245,11 @@ contract SpryRouter is IUnlockCallback, ModifiedERC6909 {
         bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_ADD_LIQUIDITY, abi.encode(d)));
         (liquidity, amount0, amount1) = abi.decode(ret, (uint128, uint256, uint256));
 
-        _mint(bytes32(PoolId.unwrap(key.toId())), recipient, uint256(liquidity));
+        _mint(recipient, uint256(PoolId.unwrap(key.toId())), uint256(liquidity));
 
         if (msg.value > 0) {
             uint256 bal = address(this).balance;
-            if (bal > 0) SafeTransfer.safeTransferETH(msg.sender, bal);
+            if (bal > 0) SafeTransferLib.safeTransferETH(msg.sender, bal);
         }
     }
 
@@ -254,8 +264,7 @@ contract SpryRouter is IUnlockCallback, ModifiedERC6909 {
         address recipient,
         uint256 deadline
     ) external ensure(deadline) returns (uint256 amount0, uint256 amount1) {
-        bytes32 id = bytes32(PoolId.unwrap(key.toId()));
-        _burn(id, msg.sender, uint256(liquidity));
+        _burn(msg.sender, uint256(PoolId.unwrap(key.toId())), uint256(liquidity));
 
         LiquidityData memory d = LiquidityData({
             key: key,
@@ -485,7 +494,7 @@ contract SpryRouter is IUnlockCallback, ModifiedERC6909 {
         if (Currency.unwrap(currency) == address(0)) {
             POOL_MANAGER.settle{value: amount}();
         } else {
-            address token = Currency.unwrap(currency);
+            ERC20 token = ERC20(Currency.unwrap(currency));
             if (payer == address(this)) {
                 token.safeTransfer(address(POOL_MANAGER), amount);
             } else {
@@ -498,5 +507,24 @@ contract SpryRouter is IUnlockCallback, ModifiedERC6909 {
     function _take(Currency currency, address recipient, uint256 amount) internal {
         if (amount == 0) return;
         POOL_MANAGER.take(currency, recipient, amount);
+    }
+
+    // ---------------------------------------------------------------------
+    // ERC6909 mint / burn overrides — keep totalSupply in sync.
+    // ---------------------------------------------------------------------
+
+    function _mint(address receiver, uint256 id, uint256 amount) internal override {
+        super._mint(receiver, id, amount);
+        totalSupply[id] += amount;
+    }
+
+    function _burn(address sender, uint256 id, uint256 amount) internal override {
+        super._burn(sender, id, amount);
+        unchecked {
+            // Underflow impossible — super._burn already reverts when the
+            // sender's balance is below `amount`, and totalSupply by
+            // construction is the sum of all balances.
+            totalSupply[id] -= amount;
+        }
     }
 }

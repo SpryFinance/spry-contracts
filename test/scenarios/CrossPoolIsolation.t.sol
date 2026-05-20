@@ -63,8 +63,8 @@ contract CrossPoolIsolation is ScenarioBase {
         assertGt(aliceLiqAB, 0);
 
         // Pool A/C ledger has zero balance for alice.
-        bytes32 idAC = bytes32(PoolId.unwrap(keyAC.toId()));
-        assertEq(router.balanceOf(idAC, alice), 0, "alice has zero shares on pool A/C");
+        uint256 idAC = uint256(PoolId.unwrap(keyAC.toId()));
+        assertEq(router.balanceOf(alice, uint256(idAC)), 0, "alice has zero shares on pool A/C");
 
         // Trying to remove the same amount on pool A/C must revert
         // (underflow on the per-id _burn).

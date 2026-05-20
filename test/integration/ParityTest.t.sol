@@ -199,12 +199,12 @@ contract ParityTest is Test {
         assertEq(liqAC_post, liqAC_pre, "pool AC liquidity unchanged");
 
         // LP shares are isolated by poolId
-        bytes32 idAB = bytes32(PoolId.unwrap(keyAB.toId()));
-        bytes32 idAC = bytes32(PoolId.unwrap(keyAC.toId()));
-        assertGt(router.balanceOf(idAB, address(this)), 0);
-        assertGt(router.balanceOf(idAC, address(this)), 0);
+        uint256 idAB = uint256(PoolId.unwrap(keyAB.toId()));
+        uint256 idAC = uint256(PoolId.unwrap(keyAC.toId()));
+        assertGt(router.balanceOf(address(this), uint256(idAB)), 0);
+        assertGt(router.balanceOf(address(this), uint256(idAC)), 0);
         // Cross-pool balance is zero
-        assertEq(router.balanceOf(idAB, address(0xdead)), 0);
+        assertEq(router.balanceOf(address(0xdead), uint256(idAB)), 0);
     }
 
     // ---------------------------------------------------------------------

@@ -97,8 +97,8 @@ abstract contract ScenarioBase is Test {
         return key.toId();
     }
 
-    function _pidBytes() internal view returns (bytes32) {
-        return bytes32(PoolId.unwrap(_pid()));
+    function _pidUint() internal view returns (uint256) {
+        return uint256(PoolId.unwrap(_pid()));
     }
 
     function _sqrtPriceX96() internal view returns (uint160 sp) {

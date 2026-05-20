@@ -125,7 +125,7 @@ contract InvariantHandler is Test {
         address actor = _actor(actorIdx);
         fractionBps = bound(fractionBps, 1, 10_000);
 
-        uint256 bal = ROUTER.balanceOf(bytes32(PoolId.unwrap(_poolId())), actor);
+        uint256 bal = ROUTER.balanceOf(actor, uint256(uint256(PoolId.unwrap(_poolId()))));
         if (bal == 0) return;
 
         uint128 toRemove = uint128((bal * fractionBps) / 10_000);
@@ -142,9 +142,9 @@ contract InvariantHandler is Test {
     /// @notice Sum of LP shares across known actors. Used by the invariant
     ///         test to prove balance bookkeeping matches totalSupply.
     function actorSharesSum() external view returns (uint256 s) {
-        bytes32 id = bytes32(PoolId.unwrap(_poolId()));
+        uint256 id = uint256(PoolId.unwrap(_poolId()));
         for (uint256 i; i < actors.length; ++i) {
-            s += ROUTER.balanceOf(id, actors[i]);
+            s += ROUTER.balanceOf(actors[i], uint256(id));
         }
     }
 }

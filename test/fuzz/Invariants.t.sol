@@ -90,8 +90,8 @@ contract Invariants is Test {
     /// @notice Every LP share the router issued must be backed by an equal
     ///         unit of liquidity in the router's full-range V4 position.
     function invariant_lpSharesMatchPositionLiquidity() public view {
-        bytes32 idBytes = bytes32(PoolId.unwrap(key.toId()));
-        uint256 routerSupply = router.totalSupply(idBytes);
+        uint256 idBytes = uint256(PoolId.unwrap(key.toId()));
+        uint256 routerSupply = router.totalSupply(uint256(idBytes));
         bytes32 positionId =
             keccak256(abi.encodePacked(address(router), TickMath.minUsableTick(TICK_SPACING), TickMath.maxUsableTick(TICK_SPACING), bytes32(0)));
         uint128 posLiq = manager.getPositionLiquidity(key.toId(), positionId);
@@ -101,18 +101,18 @@ contract Invariants is Test {
     /// @notice Sum of every actor's ERC6909 LP balance plus the setUp seeder
     ///         (this contract) must equal the router's totalSupply for the pool.
     function invariant_sharesAccountForFullSupply() public view {
-        bytes32 idBytes = bytes32(PoolId.unwrap(key.toId()));
-        uint256 sum = router.balanceOf(idBytes, address(this));
+        uint256 idBytes = uint256(PoolId.unwrap(key.toId()));
+        uint256 sum = router.balanceOf(address(this), uint256(idBytes));
         sum += handler.actorSharesSum();
-        assertEq(sum, router.totalSupply(idBytes), "actor sum + seeder != totalSupply");
+        assertEq(sum, router.totalSupply(uint256(idBytes)), "actor sum + seeder != totalSupply");
     }
 
     /// @notice The pool's reported in-range liquidity must equal the router's
     ///         total LP shares — only the router owns positions on this pool.
     function invariant_poolLiquidityEqualsRouterShares() public view {
-        bytes32 idBytes = bytes32(PoolId.unwrap(key.toId()));
+        uint256 idBytes = uint256(PoolId.unwrap(key.toId()));
         uint128 poolLiq = manager.getLiquidity(key.toId());
-        assertEq(uint256(poolLiq), router.totalSupply(idBytes), "pool liquidity != router supply");
+        assertEq(uint256(poolLiq), router.totalSupply(uint256(idBytes)), "pool liquidity != router supply");
     }
 
     /// @notice PoolManager must hold at least the unclaimed token amounts
