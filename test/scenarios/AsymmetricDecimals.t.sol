@@ -83,7 +83,7 @@ contract AsymmetricDecimals is Test {
         lp.addLiquidity(key, 1e22, 1e22, address(this));
     }
 
-    function _initSqrtPrice() internal view returns (uint160) {
+    function _initSqrtPrice() internal pure returns (uint160) {
         // Use 1:1 for simplicity in tests — the property we're testing is
         // robustness across extreme virtual-reserve ratios, which we
         // create by exercising large swap sizes.
