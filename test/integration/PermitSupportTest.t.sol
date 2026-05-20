@@ -124,7 +124,7 @@ contract PermitSupportTest is Test {
         );
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
-            (key, true, amountIn, 1, owner, deadline)
+            (key, true, amountIn, 1, owner, deadline, "")
         );
 
         uint256 t0Before = token0.balanceOf(owner);
@@ -194,7 +194,7 @@ contract PermitSupportTest is Test {
         );
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
-            (key, true, amountIn, 1, owner, deadline + 100)
+            (key, true, amountIn, 1, owner, deadline + 100, "")
         );
 
         // selfPermit swallows the expiry error; the swap then reverts because
@@ -228,7 +228,7 @@ contract PermitSupportTest is Test {
         );
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
-            (key, true, amountIn, 1, owner, deadline)
+            (key, true, amountIn, 1, owner, deadline, "")
         );
 
         vm.prank(owner);
@@ -267,7 +267,7 @@ contract PermitSupportTest is Test {
         );
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
-            (key, true, amountIn, 1, owner, deadline)
+            (key, true, amountIn, 1, owner, deadline, "")
         );
 
         uint256 t0Before = token0.balanceOf(owner);
@@ -293,7 +293,7 @@ contract PermitSupportTest is Test {
         );
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
-            (key, true, amountIn, 1, owner, deadline)
+            (key, true, amountIn, 1, owner, deadline, "")
         );
 
         uint256 ownerT0 = token0.balanceOf(owner);
@@ -327,7 +327,7 @@ contract PermitSupportTest is Test {
         // Demand an impossibly high output — swap reverts.
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
-            (key, true, amountIn, type(uint256).max, owner, deadline)
+            (key, true, amountIn, type(uint256).max, owner, deadline, "")
         );
 
         vm.prank(owner);
@@ -349,11 +349,11 @@ contract PermitSupportTest is Test {
         bytes[] memory calls = new bytes[](2);
         calls[0] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
-            (key, true, 1e18, 1, address(this), block.timestamp + 100)
+            (key, true, 1e18, 1, address(this), block.timestamp + 100, "")
         );
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
-            (key, false, 1e18, 1, address(this), block.timestamp + 100)
+            (key, false, 1e18, 1, address(this), block.timestamp + 100, "")
         );
         bytes[] memory results = router.multicall(calls);
         uint256 out0 = abi.decode(results[0], (uint256));

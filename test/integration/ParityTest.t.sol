@@ -122,7 +122,8 @@ contract ParityTest is Test {
             1,
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
 
         assertGt(out, 0, "received tokenA from native ETH swap");
         assertEq(tokenA.balanceOf(address(this)) - tokABefore, out, "tokenA delta matches return value");
@@ -189,7 +190,8 @@ contract ParityTest is Test {
             1,
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
 
         (uint160 priceAB_post, , , ) = manager.getSlot0(keyAB.toId());
         (uint160 priceAC_post, , , ) = manager.getSlot0(keyAC.toId());
@@ -236,7 +238,8 @@ contract ParityTest is Test {
             0,
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
     }
 
     function testRouterReceivesETHFromPoolManager() public {

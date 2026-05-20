@@ -88,7 +88,8 @@ contract SpryRouterSingleTest is Test {
             1,
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
 
         assertGt(amountOut, 0, "received non-zero output");
         assertEq(token1.balanceOf(address(this)) - balBefore, amountOut, "balance matches");
@@ -103,7 +104,8 @@ contract SpryRouterSingleTest is Test {
             1,
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
         assertEq(token0.balanceOf(address(this)) - balBefore, amountOut);
     }
 
@@ -116,7 +118,8 @@ contract SpryRouterSingleTest is Test {
             type(uint256).max, // slippage floor is impossibly high
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
     }
 
     function testExactInputSingleDeadlineReverts() public {
@@ -128,7 +131,8 @@ contract SpryRouterSingleTest is Test {
             1,
             address(this),
             block.timestamp - 1
-        );
+        ,
+        "");
     }
 
     function testExactOutputSingleHappyPath() public {
@@ -141,7 +145,8 @@ contract SpryRouterSingleTest is Test {
             type(uint256).max,
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
         assertEq(token1.balanceOf(address(this)) - balOutBefore, 1e18, "exact-out delivered");
         assertEq(balInBefore - token0.balanceOf(address(this)), amountIn, "input matched");
     }
@@ -155,7 +160,8 @@ contract SpryRouterSingleTest is Test {
             1, // unreasonably tight max-in
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
     }
 
     function testUnlockCallbackRevertsForNonPoolManager() public {

@@ -82,6 +82,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         address payer;
         address recipient;
         bool usePermit2;
+        bytes hookData;
     }
 
     /// @notice One hop in a multi-hop path. `intermediateCurrency` is the
@@ -206,7 +207,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 amountIn,
         uint256 amountOutMin,
         address recipient,
-        uint256 deadline
+        uint256 deadline,
+        bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountOut) {
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
@@ -217,7 +219,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
             slippageBound: amountOutMin,
             payer: msg.sender,
             recipient: recipient,
-            usePermit2: false
+            usePermit2: false,
+            hookData: hookData
         });
         amountOut = abi.decode(
             POOL_MANAGER.unlock(abi.encode(TAG_SINGLE, abi.encode(data))),
@@ -233,7 +236,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 amountOut,
         uint256 amountInMax,
         address recipient,
-        uint256 deadline
+        uint256 deadline,
+        bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountIn) {
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
@@ -244,7 +248,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
             slippageBound: amountInMax,
             payer: msg.sender,
             recipient: recipient,
-            usePermit2: false
+            usePermit2: false,
+            hookData: hookData
         });
         amountIn = abi.decode(
             POOL_MANAGER.unlock(abi.encode(TAG_SINGLE, abi.encode(data))),
@@ -266,7 +271,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 amountIn,
         uint256 amountOutMin,
         address recipient,
-        uint256 deadline
+        uint256 deadline,
+        bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountOut) {
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
@@ -277,7 +283,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
             slippageBound: amountOutMin,
             payer: msg.sender,
             recipient: recipient,
-            usePermit2: true
+            usePermit2: true,
+            hookData: hookData
         });
         amountOut = abi.decode(
             POOL_MANAGER.unlock(abi.encode(TAG_SINGLE, abi.encode(data))),
@@ -295,7 +302,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 amountOut,
         uint256 amountInMax,
         address recipient,
-        uint256 deadline
+        uint256 deadline,
+        bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountIn) {
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
@@ -306,7 +314,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
             slippageBound: amountInMax,
             payer: msg.sender,
             recipient: recipient,
-            usePermit2: true
+            usePermit2: true,
+            hookData: hookData
         });
         amountIn = abi.decode(
             POOL_MANAGER.unlock(abi.encode(TAG_SINGLE, abi.encode(data))),
@@ -680,7 +689,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
                     ? TickMath.MIN_SQRT_PRICE + 1
                     : TickMath.MAX_SQRT_PRICE - 1
             }),
-            ""
+            data.hookData
         );
 
         int128 d0 = delta.amount0();

@@ -160,7 +160,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         calls[0] = abi.encodeCall(Permit2Forwarder.permit, (owner, permitSingle, signature));
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingleViaPermit2,
-            (key, true, amount, 1, owner, block.timestamp + 100)
+            (key, true, amount, 1, owner, block.timestamp + 100, "")
         );
 
         uint256 t0Before = token0.balanceOf(owner);
@@ -194,7 +194,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         calls[0] = abi.encodeCall(Permit2Forwarder.permit, (owner, permitSingle, signature));
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactOutputSingleViaPermit2,
-            (key, true, wantOut, uint256(maxIn), owner, block.timestamp + 100)
+            (key, true, wantOut, uint256(maxIn), owner, block.timestamp + 100, "")
         );
 
         uint256 t1Before = token1.balanceOf(owner);
@@ -321,7 +321,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         calls[0] = abi.encodeCall(Permit2Forwarder.permit, (owner, permitSingle, badSig));
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingleViaPermit2,
-            (key, true, amount, 1, owner, block.timestamp + 100)
+            (key, true, amount, 1, owner, block.timestamp + 100, "")
         );
 
         // Permit2Forwarder.permit swallows the bad-sig revert via try/catch,
@@ -350,7 +350,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         calls[0] = abi.encodeCall(Permit2Forwarder.permit, (owner, permitSingle, signature));
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingleViaPermit2,
-            (key, true, amount, 1, owner, block.timestamp + 100)
+            (key, true, amount, 1, owner, block.timestamp + 100, "")
         );
 
         vm.prank(owner);
@@ -386,7 +386,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         calls[0] = abi.encodeCall(Permit2Forwarder.permit, (owner, permitSingle, signature));
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingleViaPermit2,
-            (key, true, amount, 1, owner, block.timestamp + 100)
+            (key, true, amount, 1, owner, block.timestamp + 100, "")
         );
 
         uint256 t0Before = token0.balanceOf(owner);
@@ -420,7 +420,8 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         vm.expectRevert(SpryRouter.Permit2NativeUnsupported.selector);
         router.swapExactInputSingleViaPermit2{value: 1 ether}(
             keyETH, true, 1 ether, 1, owner, block.timestamp + 100
-        );
+        ,
+        "");
     }
 
     // ---------------------------------------------------------------------
@@ -437,7 +438,8 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         vm.prank(owner);
         uint256 amountOut = router.swapExactInputSingle(
             key, true, 1e18, 1, owner, block.timestamp + 100
-        );
+        ,
+        "");
         assertGt(amountOut, 0);
         assertEq(token1.balanceOf(owner) - t1Before, amountOut, "direct path still credits owner");
     }

@@ -90,7 +90,7 @@ contract InvariantHandler is Test {
         uint256 kBefore = _kFromState();
 
         vm.startPrank(actor);
-        try ROUTER.swapExactInputSingle(KEY, zeroForOne, amountIn, 1, actor, block.timestamp + 100) {
+        try ROUTER.swapExactInputSingle(KEY, zeroForOne, amountIn, 1, actor, block.timestamp + 100, "") {
             ++swapCount;
         } catch {
             // Swap reverted (likely hit the sqrtPriceLimit) - skip

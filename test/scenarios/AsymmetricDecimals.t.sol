@@ -113,9 +113,9 @@ contract AsymmetricDecimals is Test {
         // then verify a smaller trade in the opposite direction still
         // executes cleanly (no overflow, no div-by-zero).
         for (uint256 i = 0; i < 3; ++i) {
-            router.swapExactInputSingle(key, true, 1e21, 1, address(this), block.timestamp + 100);
+            router.swapExactInputSingle(key, true, 1e21, 1, address(this), block.timestamp + 100, "");
         }
-        uint256 out = router.swapExactInputSingle(key, false, 1e18, 1, address(this), block.timestamp + 100);
+        uint256 out = router.swapExactInputSingle(key, false, 1e18, 1, address(this), block.timestamp + 100, "");
         assertGt(out, 0, "counter-direction swap succeeds after large imbalance");
     }
 

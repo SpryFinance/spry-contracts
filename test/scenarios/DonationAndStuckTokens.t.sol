@@ -52,8 +52,8 @@ contract DonationAndStuckTokens is ScenarioBase {
         // happy path with carol's OWN balance change is acceptable; what's
         // NOT acceptable is carol ending up with the stuck token0.
         vm.startPrank(carol);
-        try router.swapExactInputSingle(key, true, 1, 1, carol, block.timestamp + 100) returns (uint256) {} catch {}
-        try router.swapExactOutputSingle(key, true, 1, type(uint256).max, carol, block.timestamp + 100) returns (uint256) {} catch {}
+        try router.swapExactInputSingle(key, true, 1, 1, carol, block.timestamp + 100, "") returns (uint256) {} catch {}
+        try router.swapExactOutputSingle(key, true, 1, type(uint256).max, carol, block.timestamp + 100, "") returns (uint256) {} catch {}
         try router.removeLiquidity(key, 1, 0, 0, carol, block.timestamp + 100) returns (uint256, uint256) {} catch {}
         vm.stopPrank();
 

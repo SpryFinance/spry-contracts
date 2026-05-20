@@ -96,7 +96,7 @@ contract DoSResistance is Test {
 
         uint256 outBefore = good2.balanceOf(address(this));
         bool zfo = address(good) < address(good2);
-        router.swapExactInputSingle(keyGood, zfo, 1e18, 1, address(this), block.timestamp + 100);
+        router.swapExactInputSingle(keyGood, zfo, 1e18, 1, address(this), block.timestamp + 100, "");
         // One side moved (we don't care which without checking direction explicitly).
         // What matters: the swap completes.
         assertTrue(
@@ -134,7 +134,8 @@ contract DoSResistance is Test {
 
         uint256 out = router.swapExactInputSingle(
             vanillaKey, true, 1e18, 1, address(this), block.timestamp + 100
-        );
+        ,
+        "");
         assertGt(out, 0, "vanilla pool swap works alongside Spry pools");
     }
 

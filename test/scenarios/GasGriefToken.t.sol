@@ -94,7 +94,8 @@ contract GasGriefToken is Test {
         bool zfo = t0b == address(good2);
         uint256 out = router.swapExactInputSingle(
             keyGood, zfo, 1e18, 1, address(this), block.timestamp + 100
-        );
+        ,
+        "");
         assertGt(out, 0, "healthy pool swap works");
 
         // Now try pool A with a limited gas budget. We don't care whether
@@ -107,7 +108,8 @@ contract GasGriefToken is Test {
         // Pool B is still usable.
         uint256 out2 = router.swapExactInputSingle(
             keyGood, zfo, 1e17, 1, address(this), block.timestamp + 100
-        );
+        ,
+        "");
         assertGt(out2, 0, "healthy pool swap still works after bad pool's attempt");
     }
 }

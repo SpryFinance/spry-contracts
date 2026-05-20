@@ -155,7 +155,8 @@ contract ForkSwapShapesTest is Test {
             type(uint256).max,
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
 
         assertGt(amountIn, 0, "router reports non-zero input");
         assertEq(
@@ -186,7 +187,8 @@ contract ForkSwapShapesTest is Test {
             1,
             address(this),
             block.timestamp + 100
-        );
+        ,
+        "");
         assertGt(received, 0, "received tokenA from ETH swap");
         assertEq(tokenA.balanceOf(address(this)) - tokABefore, received);
         assertEq(ethBefore - address(this).balance, 1 ether);
@@ -266,8 +268,8 @@ contract ForkSwapShapesTest is Test {
 
         // Generate fee flow: a series of balanced round-trip swaps.
         for (uint256 i = 0; i < 10; ++i) {
-            router.swapExactInputSingle(keyBC, true, 5e19, 1, address(this), block.timestamp + 100);
-            router.swapExactInputSingle(keyBC, false, 5e19, 1, address(this), block.timestamp + 100);
+            router.swapExactInputSingle(keyBC, true, 5e19, 1, address(this), block.timestamp + 100, "");
+            router.swapExactInputSingle(keyBC, false, 5e19, 1, address(this), block.timestamp + 100, "");
         }
 
         uint256 bBefore = tokenB.balanceOf(address(this));
