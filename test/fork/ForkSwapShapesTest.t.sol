@@ -62,12 +62,7 @@ contract ForkSwapShapesTest is Test {
             return;
         }
 
-        uint256 forkBlock = vm.envOr("FORK_BLOCK", uint256(0));
-        if (forkBlock == 0) {
-            vm.createSelectFork(rpc);
-        } else {
-            vm.createSelectFork(rpc, forkBlock);
-        }
+        vm.createSelectFork(rpc);
 
         manager = IPoolManager(vm.envAddress("V4_POOL_MANAGER"));
         router = new SpryRouter(manager);

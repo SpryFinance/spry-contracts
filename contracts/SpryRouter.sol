@@ -56,6 +56,7 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
     uint8 internal constant TAG_MULTI_IN = 2;
     uint8 internal constant TAG_ADD_LIQUIDITY = 3;
     uint8 internal constant TAG_REMOVE_LIQUIDITY = 4;
+    uint8 internal constant TAG_MULTI_OUT = 5;
 
     enum Kind {
         ExactInputSingle,
@@ -92,6 +93,20 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
         address recipient;
     }
 
+    /// @notice Multi-hop exact-output payload. The forward `path` is the
+    ///         same shape as `MultiInputData`: each PathHop's
+    ///         intermediateCurrency is the OUTPUT of that hop.
+    ///         `currencyIn` is the user's payment side; `amountOut`
+    ///         is the exact amount of `path[last].intermediateCurrency`
+    ///         the user wants to receive.
+    struct MultiOutputData {
+        Currency currencyIn;
+        PathHop[] path;
+        uint256 amountOut;
+        address payer;
+        address recipient;
+    }
+
     struct LiquidityData {
         PoolKey key;
         int256 liquidityDelta;  // signed: + add, - remove
@@ -121,6 +136,27 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
 
     receive() external payable {}
 
+    /// @dev Snapshot of the router's ETH balance excluding the current call's
+    ///      `msg.value`. Used by every payable entry point to refund only
+    ///      what this call put on the contract, never any pre-existing
+    ///      stuck balance (which a prior bug could otherwise leak to the
+    ///      next caller).
+    function _ethPriorBalance() internal view returns (uint256) {
+        return address(this).balance - msg.value;
+    }
+
+    /// @dev Refund any ETH this call deposited on the router but didn't
+    ///      consume. Compares against `priorBal` captured at function
+    ///      entry so pre-existing balances are never refunded.
+    function _refundExcessETH(uint256 priorBal) internal {
+        uint256 currentBal = address(this).balance;
+        if (currentBal > priorBal) {
+            unchecked {
+                SafeTransferLib.safeTransferETH(msg.sender, currentBal - priorBal);
+            }
+        }
+    }
+
     // ---------------------------------------------------------------------
     // Single-hop user entry points
     // ---------------------------------------------------------------------
@@ -133,6 +169,7 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountOut) {
+        uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
             kind: Kind.ExactInputSingle,
             key: key,
@@ -147,6 +184,7 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
             (uint256)
         );
         if (amountOut < amountOutMin) revert InsufficientOutput();
+        _refundExcessETH(priorBal);
     }
 
     function swapExactOutputSingle(
@@ -157,6 +195,7 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
         address recipient,
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountIn) {
+        uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
             kind: Kind.ExactOutputSingle,
             key: key,
@@ -171,15 +210,11 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
             (uint256)
         );
         if (amountIn > amountInMax) revert ExcessiveInput();
-
-        if (msg.value > 0) {
-            uint256 bal = address(this).balance;
-            if (bal > 0) SafeTransferLib.safeTransferETH(msg.sender, bal);
-        }
+        _refundExcessETH(priorBal);
     }
 
     // ---------------------------------------------------------------------
-    // Multi-hop user entry point (exact-input only for now)
+    // Multi-hop user entry points
     // ---------------------------------------------------------------------
 
     /// @notice Exact-input swap along an arbitrary-length path. Atomic — a
@@ -195,6 +230,7 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountOut) {
         if (path.length == 0) revert EmptyPath();
+        uint256 priorBal = _ethPriorBalance();
 
         MultiInputData memory data = MultiInputData({
             currencyIn: currencyIn,
@@ -208,6 +244,48 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
             (uint256)
         );
         if (amountOut < amountOutMin) revert InsufficientOutput();
+        _refundExcessETH(priorBal);
+    }
+
+    /// @notice Exact-output swap along an arbitrary-length path. The user
+    ///         specifies the FINAL output currency amount they want; the
+    ///         router walks the path BACKWARDS to determine the required
+    ///         input amount of `currencyIn`. Atomic, slippage-checked
+    ///         against `amountInMax`. For a single-hop swap, prefer
+    ///         `swapExactOutputSingle` (lower gas).
+    /// @param  currencyIn the user pays from this currency (= the first
+    ///                    hop's input side)
+    /// @param  path       same forward path representation as `swapExactInput`:
+    ///                    each PathHop's intermediateCurrency is that hop's
+    ///                    OUTPUT. path[last].intermediateCurrency is the
+    ///                    final output the user wants.
+    /// @param  amountOut  exact amount of path[last].intermediateCurrency
+    ///                    to be delivered to `recipient`
+    /// @param  amountInMax revert ceiling on the input amount the user pays
+    function swapExactOutput(
+        Currency currencyIn,
+        PathHop[] calldata path,
+        uint256 amountOut,
+        uint256 amountInMax,
+        address recipient,
+        uint256 deadline
+    ) external payable ensure(deadline) returns (uint256 amountIn) {
+        if (path.length == 0) revert EmptyPath();
+        uint256 priorBal = _ethPriorBalance();
+
+        MultiOutputData memory data = MultiOutputData({
+            currencyIn: currencyIn,
+            path: path,
+            amountOut: amountOut,
+            payer: msg.sender,
+            recipient: recipient
+        });
+        amountIn = abi.decode(
+            POOL_MANAGER.unlock(abi.encode(TAG_MULTI_OUT, abi.encode(data))),
+            (uint256)
+        );
+        if (amountIn > amountInMax) revert ExcessiveInput();
+        _refundExcessETH(priorBal);
     }
 
     // ---------------------------------------------------------------------
@@ -232,25 +310,30 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
         // (which has fresh stack space). The outer function only packs args
         // and dispatches, keeping the live-variable count well under 16 to
         // satisfy the no-via_ir build that `forge coverage` uses.
-        LiquidityData memory d = LiquidityData({
-            key: key,
-            liquidityDelta: 0, // signal: callback computes from desired amounts
-            amount0Desired: amount0Desired,
-            amount1Desired: amount1Desired,
-            amount0Min: amount0Min,
-            amount1Min: amount1Min,
-            payer: msg.sender,
-            recipient: recipient
-        });
-        bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_ADD_LIQUIDITY, abi.encode(d)));
-        (liquidity, amount0, amount1) = abi.decode(ret, (uint128, uint256, uint256));
-
-        _mint(recipient, uint256(PoolId.unwrap(key.toId())), uint256(liquidity));
-
-        if (msg.value > 0) {
-            uint256 bal = address(this).balance;
-            if (bal > 0) SafeTransferLib.safeTransferETH(msg.sender, bal);
+        uint256 priorBal = _ethPriorBalance();
+        {
+            LiquidityData memory d = LiquidityData({
+                key: key,
+                liquidityDelta: 0, // signal: callback computes from desired amounts
+                amount0Desired: amount0Desired,
+                amount1Desired: amount1Desired,
+                amount0Min: amount0Min,
+                amount1Min: amount1Min,
+                payer: msg.sender,
+                recipient: recipient
+            });
+            bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_ADD_LIQUIDITY, abi.encode(d)));
+            (liquidity, amount0, amount1) = abi.decode(ret, (uint128, uint256, uint256));
         }
+
+        _mintLPShares(key, recipient, liquidity);
+        _refundExcessETH(priorBal);
+    }
+
+    /// @dev Small wrapper so the inline _mint call in `addLiquidity` doesn't
+    ///      add to that function's stack budget under the no-via_ir build.
+    function _mintLPShares(PoolKey calldata key, address recipient, uint128 liquidity) private {
+        _mint(recipient, uint256(PoolId.unwrap(key.toId())), uint256(liquidity));
     }
 
     /// @notice Burns ERC6909 LP shares from msg.sender and returns the
@@ -293,6 +376,9 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
         } else if (tag == TAG_MULTI_IN) {
             MultiInputData memory d = abi.decode(payload, (MultiInputData));
             return _executeMultiExactInput(d);
+        } else if (tag == TAG_MULTI_OUT) {
+            MultiOutputData memory d = abi.decode(payload, (MultiOutputData));
+            return _executeMultiExactOutput(d);
         } else if (tag == TAG_ADD_LIQUIDITY) {
             LiquidityData memory d = abi.decode(payload, (LiquidityData));
             return _executeAddLiquidity(d);
@@ -482,6 +568,87 @@ contract SpryRouter is IUnlockCallback, ERC6909 {
         _take(currentIn, data.recipient, uint256(lastOutput));
 
         return abi.encode(uint256(lastOutput));
+    }
+
+    // ---------------------------------------------------------------------
+    // Internal: multi-hop exact-output executor
+    //
+    // The user provides the SAME forward path representation as exact-input
+    // (each PathHop's intermediateCurrency is the OUTPUT of that hop) plus
+    // the desired final output amount. The executor walks the path in
+    // REVERSE: the last hop runs first with `amountSpecified = +amountOut`,
+    // and the input amount it required becomes the exact-output target for
+    // the previous hop, and so on. Each pool's swap state is independent,
+    // so reversing the iteration order is safe.
+    // ---------------------------------------------------------------------
+    function _executeMultiExactOutput(MultiOutputData memory data) internal returns (bytes memory) {
+        uint256 n = data.path.length;
+        Currency currentOut = data.path[n - 1].intermediateCurrency;
+        int256 currentAmount = int256(data.amountOut); // positive = exactOut
+        uint256 amountInRequired;
+
+        // Walk the path in reverse: i = n-1, n-2, ..., 0.
+        for (uint256 step = 0; step < n; ++step) {
+            uint256 i = n - 1 - step;
+            Currency currentIn = (i == 0)
+                ? data.currencyIn
+                : data.path[i - 1].intermediateCurrency;
+
+            uint256 inAmount = _runExactOutHop(data.path[i], currentIn, currentOut, currentAmount);
+
+            currentAmount = int256(inAmount);
+            currentOut = currentIn;
+            if (i == 0) amountInRequired = inAmount;
+        }
+
+        _settle(data.currencyIn, data.payer, amountInRequired);
+        _take(data.path[n - 1].intermediateCurrency, data.recipient, data.amountOut);
+
+        return abi.encode(amountInRequired);
+    }
+
+    /// @dev Extracted to keep `_executeMultiExactOutput`'s stack budget under
+    ///      the no-via_ir limit. Runs a single exact-output hop and returns
+    ///      the input amount the swap consumed.
+    function _runExactOutHop(
+        PathHop memory hop,
+        Currency currentIn,
+        Currency currentOut,
+        int256 amountSpecified
+    ) private returns (uint256 inAmount) {
+        bool zeroForOne = Currency.unwrap(currentIn) < Currency.unwrap(currentOut);
+        PoolKey memory key = zeroForOne
+            ? PoolKey({
+                currency0: currentIn,
+                currency1: currentOut,
+                fee: hop.fee,
+                tickSpacing: hop.tickSpacing,
+                hooks: hop.hooks
+            })
+            : PoolKey({
+                currency0: currentOut,
+                currency1: currentIn,
+                fee: hop.fee,
+                tickSpacing: hop.tickSpacing,
+                hooks: hop.hooks
+            });
+
+        BalanceDelta delta = POOL_MANAGER.swap(
+            key,
+            SwapParams({
+                zeroForOne: zeroForOne,
+                amountSpecified: amountSpecified,
+                sqrtPriceLimitX96: zeroForOne
+                    ? TickMath.MIN_SQRT_PRICE + 1
+                    : TickMath.MAX_SQRT_PRICE - 1
+            }),
+            hop.hookData
+        );
+
+        // The input side's delta is negative (router owes). Magnitude = the
+        // input the swap consumed.
+        int128 inDelta = zeroForOne ? delta.amount0() : delta.amount1();
+        inAmount = uint256(uint128(-inDelta));
     }
 
     // ---------------------------------------------------------------------
