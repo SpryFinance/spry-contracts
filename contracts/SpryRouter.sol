@@ -10,13 +10,7 @@ import {BalanceDelta} from "v4-core/src/types/BalanceDelta.sol";
 import {SwapParams} from "v4-core/src/types/PoolOperation.sol";
 import {TickMath} from "v4-core/src/libraries/TickMath.sol";
 
-import {ModifyLiquidityParams} from "v4-core/src/types/PoolOperation.sol";
-import {PoolId, PoolIdLibrary} from "v4-core/src/types/PoolId.sol";
-import {StateLibrary} from "v4-core/src/libraries/StateLibrary.sol";
-import {LiquidityAmounts} from "v4-periphery/src/libraries/LiquidityAmounts.sol";
-
 import {ERC20} from "solmate/src/tokens/ERC20.sol";
-import {ERC6909} from "solmate/src/tokens/ERC6909.sol";
 import {SafeTransferLib} from "solmate/src/utils/SafeTransferLib.sol";
 
 import {IERC20Permit} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Permit.sol";
@@ -27,41 +21,39 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 
 /// @title SpryRouter
-/// @notice Periphery router for swaps and liquidity management on Spry pools.
-///         Exposes a compact, ergonomic API (exact-in / exact-out single-hop,
-///         unbounded multi-hop, add/remove liquidity), slippage and deadline
-///         guards, and first-class native-ETH support. Every external call
-///         translates into a single PoolManager.unlock callback. Also tracks
-///         per-user full-range LP shares via solmate's ERC6909 so
-///         add/removeLiquidity round-trips behave like a standard router.
-/// @dev    ERC6909 (multi-token ledger) and SafeTransferLib (non-standard
-///         ERC20 tolerance) are pulled in from solmate rather than rolled
-///         by hand — both are widely audited and already part of the V4
-///         core's dependency tree (PoolManager itself inherits ERC6909).
+/// @notice Periphery swap router for Spry pools. Exposes a compact,
+///         ergonomic API (exact-in / exact-out single-hop, unbounded
+///         multi-hop), slippage and deadline guards, and first-class
+///         native-ETH support. Every external call translates into a
+///         single PoolManager.unlock callback.
+/// @dev    Liquidity management (add / remove / increase / decrease) is
+///         delegated to Uniswap's canonical `PositionManager` from
+///         v4-periphery — it mints an ERC721 NFT per LP position with
+///         per-position fee accounting handled by V4 itself. Mirroring
+///         Uniswap's UniversalRouter + PositionManager split: SpryRouter
+///         is swap-only, PositionManager is LP-only. The two contracts
+///         operate independently against the shared V4 PoolManager and
+///         the shared SpryHook.
+/// @dev    SafeTransferLib (non-standard ERC20 tolerance) is pulled in
+///         from solmate rather than rolled by hand — already audited and
+///         part of the V4 core dependency tree.
 /// @dev    multicall caveat: `multicall(bytes[])` (inherited from
 ///         v4-periphery's `Multicall_v4`) is `payable`, and `msg.value`
 ///         is preserved across every inner delegatecall. The ETH-refund
-///         logic on this router fires from inside each *swap/liquidity*
-///         entry point against a balance snapshot at that entry point —
-///         the multicall wrapper itself does not refund. As a result, a
-///         multicall whose payload contains no ETH-consuming inner call
-///         (e.g. `[selfPermit, permit2.permit]` with `value > 0`) leaves
-///         the supplied ETH on the router. The router has no admin /
-///         sweep / rescue function, so that ETH is permanently inaccessible.
+///         logic on this router fires from inside each swap entry point
+///         against a balance snapshot at that entry point — the multicall
+///         wrapper itself does not refund. As a result, a multicall whose
+///         payload contains no ETH-consuming inner call (e.g.
+///         `[selfPermit, permit2.permit]` with `value > 0`) leaves the
+///         supplied ETH on the router. The router has no admin / sweep /
+///         rescue function, so that ETH is permanently inaccessible.
 ///         Callers should NOT attach `msg.value` to a multicall whose
 ///         inner calls do not themselves consume ETH. The official
 ///         Multicall_v4 is not `virtual` so this router cannot override
 ///         it to add a refund step; the constraint is therefore expressed
 ///         as a documented caveat rather than a code-level guard.
-contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder {
-    using PoolIdLibrary for PoolKey;
-    using StateLibrary for IPoolManager;
+contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     using SafeTransferLib for ERC20;
-
-    /// @notice Total minted minus burned per token-id, mirroring the V4
-    ///         in-range liquidity backing that id's LP shares. Tracked
-    ///         explicitly here because solmate's bare ERC6909 doesn't.
-    mapping(uint256 id => uint256) public totalSupply;
 
     error Expired();
     error InsufficientOutput();
@@ -69,9 +61,6 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     error NotPoolManager();
     error InvalidCallbackKind();
     error EmptyPath();
-    error InsufficientAAmount();
-    error InsufficientBAmount();
-    error InsufficientLiquidity();
     /// @notice Permit2 cannot mediate native-ETH transfers — it only knows
     ///         about ERC20s. Raised when a *ViaPermit2 entry point is asked
     ///         to settle a native-ETH leg.
@@ -105,9 +94,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     // Tags for the unlock callback's tagged-union payload.
     uint8 internal constant TAG_SINGLE = 1;
     uint8 internal constant TAG_MULTI_IN = 2;
-    uint8 internal constant TAG_ADD_LIQUIDITY = 3;
-    uint8 internal constant TAG_REMOVE_LIQUIDITY = 4;
-    uint8 internal constant TAG_MULTI_OUT = 5;
+    uint8 internal constant TAG_MULTI_OUT = 3;
 
     enum Kind {
         ExactInputSingle,
@@ -166,18 +153,6 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         bool usePermit2;
     }
 
-    struct LiquidityData {
-        PoolKey key;
-        int256 liquidityDelta;  // signed: + add, - remove
-        uint256 amount0Desired; // only used on add for sizing
-        uint256 amount1Desired; // only used on add for sizing
-        uint256 amount0Min;
-        uint256 amount1Min;
-        address payer;
-        address recipient;
-        bool usePermit2;
-    }
-
     IPoolManager public immutable POOL_MANAGER;
 
     constructor(IPoolManager _poolManager, IAllowanceTransfer _permit2) Permit2Forwarder(_permit2) {
@@ -200,8 +175,8 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///         The token is told that `msg.sender` authorizes the router to
     ///         spend `value` of their balance until `deadline`, using the
     ///         supplied signature. Designed to be chained with a subsequent
-    ///         swap or addLiquidity call in a single tx via `multicall`,
-    ///         saving the user a separate `approve` transaction.
+    ///         swap call in a single tx via `multicall`, saving the user a
+    ///         separate `approve` transaction.
     /// @dev    `msg.sender` here is the original caller (multicall delegates
     ///         into this contract via DELEGATECALL, preserving msg.sender).
     ///         Wraps the call in try/catch so a front-run permit attack
@@ -556,131 +531,6 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     }
 
     // ---------------------------------------------------------------------
-    // Liquidity user entry points (full-range only)
-    // ---------------------------------------------------------------------
-
-    /// @notice Adds full-range liquidity to `key` using desired amounts. The
-    ///         router computes the V4 liquidity value internally from the
-    ///         pool's current price and the bounds, applies slippage checks
-    ///         against amount{0,1}Min, and mints ERC6909 LP shares to
-    ///         `recipient` equal to the liquidity delta.
-    function addLiquidity(
-        PoolKey calldata key,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        uint256 amount0Min,
-        uint256 amount1Min,
-        address recipient,
-        uint256 deadline
-    ) external payable ensure(deadline) returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
-        _assertRecipient(recipient);
-        // The actual `liquidity` value is computed inside the unlock callback
-        // (which has fresh stack space). The outer function only packs args
-        // and dispatches, keeping the live-variable count well under 16 to
-        // satisfy the no-via_ir build that `forge coverage` uses.
-        uint256 priorBal = _ethPriorBalance();
-        {
-            LiquidityData memory d = LiquidityData({
-                key: key,
-                liquidityDelta: 0, // signal: callback computes from desired amounts
-                amount0Desired: amount0Desired,
-                amount1Desired: amount1Desired,
-                amount0Min: amount0Min,
-                amount1Min: amount1Min,
-                payer: msg.sender,
-                recipient: recipient,
-                usePermit2: false
-            });
-            bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_ADD_LIQUIDITY, abi.encode(d)));
-            (liquidity, amount0, amount1) = abi.decode(ret, (uint128, uint256, uint256));
-        }
-
-        _mintLPShares(key, recipient, liquidity);
-        _refundExcessETH(priorBal);
-    }
-
-    /// @notice Permit2 variant of addLiquidity. Both currencies are pulled
-    ///         from the payer via Permit2.transferFrom. Native-ETH pools
-    ///         are not supported (Permit2 cannot mediate ETH); use the
-    ///         regular `addLiquidity` for those.
-    function addLiquidityViaPermit2(
-        PoolKey calldata key,
-        uint256 amount0Desired,
-        uint256 amount1Desired,
-        uint256 amount0Min,
-        uint256 amount1Min,
-        address recipient,
-        uint256 deadline
-    ) external payable ensure(deadline) returns (uint128 liquidity, uint256 amount0, uint256 amount1) {
-        _assertRecipient(recipient);
-        // V4's currency-sort invariant means only currency0 can ever be
-        // native ETH (address(0) sorts strictly first); checking it suffices.
-        _assertNotNative(key.currency0);
-        uint256 priorBal = _ethPriorBalance();
-        {
-            LiquidityData memory d = LiquidityData({
-                key: key,
-                liquidityDelta: 0,
-                amount0Desired: amount0Desired,
-                amount1Desired: amount1Desired,
-                amount0Min: amount0Min,
-                amount1Min: amount1Min,
-                payer: msg.sender,
-                recipient: recipient,
-                usePermit2: true
-            });
-            bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_ADD_LIQUIDITY, abi.encode(d)));
-            (liquidity, amount0, amount1) = abi.decode(ret, (uint128, uint256, uint256));
-        }
-
-        _mintLPShares(key, recipient, liquidity);
-        _refundExcessETH(priorBal);
-    }
-
-    /// @dev Small wrapper so the inline _mint call in `addLiquidity` doesn't
-    ///      add to that function's stack budget under the no-via_ir build.
-    function _mintLPShares(PoolKey calldata key, address recipient, uint128 liquidity) private {
-        _mint(recipient, uint256(PoolId.unwrap(key.toId())), uint256(liquidity));
-    }
-
-    /// @notice Burns ERC6909 LP shares from msg.sender and returns the
-    ///         proportional token amounts to `recipient`. Slippage on each
-    ///         currency enforced via amount{0,1}Min.
-    /// @dev    If the pool's currency0 is native ETH (address(0)) then
-    ///         `recipient` MUST be an EOA or a contract that can receive
-    ///         ETH (i.e. has a `receive()` or payable fallback). The
-    ///         V4 PoolManager's `take()` performs a raw call with value;
-    ///         a non-payable contract recipient will cause the entire
-    ///         `removeLiquidity` call to revert with V4's
-    ///         `NativeTransferFailed`. The same caveat applies to any
-    ///         downstream pool whose currency0 is native ETH.
-    function removeLiquidity(
-        PoolKey calldata key,
-        uint128 liquidity,
-        uint256 amount0Min,
-        uint256 amount1Min,
-        address recipient,
-        uint256 deadline
-    ) external ensure(deadline) returns (uint256 amount0, uint256 amount1) {
-        _assertRecipient(recipient);
-        _burn(msg.sender, uint256(PoolId.unwrap(key.toId())), uint256(liquidity));
-
-        LiquidityData memory d = LiquidityData({
-            key: key,
-            liquidityDelta: -int256(uint256(liquidity)),
-            amount0Desired: 0,
-            amount1Desired: 0,
-            amount0Min: amount0Min,
-            amount1Min: amount1Min,
-            payer: address(0),
-            recipient: recipient,
-            usePermit2: false   // removal never pulls from payer; flag unused
-        });
-        bytes memory ret = POOL_MANAGER.unlock(abi.encode(TAG_REMOVE_LIQUIDITY, abi.encode(d)));
-        (amount0, amount1) = abi.decode(ret, (uint256, uint256));
-    }
-
-    // ---------------------------------------------------------------------
     // Unlock callback — tagged dispatch
     // ---------------------------------------------------------------------
 
@@ -696,92 +546,9 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         } else if (tag == TAG_MULTI_OUT) {
             MultiOutputData memory d = abi.decode(payload, (MultiOutputData));
             return _executeMultiExactOutput(d);
-        } else if (tag == TAG_ADD_LIQUIDITY) {
-            LiquidityData memory d = abi.decode(payload, (LiquidityData));
-            return _executeAddLiquidity(d);
-        } else if (tag == TAG_REMOVE_LIQUIDITY) {
-            LiquidityData memory d = abi.decode(payload, (LiquidityData));
-            return _executeRemoveLiquidity(d);
         } else {
             revert InvalidCallbackKind();
         }
-    }
-
-    // ---------------------------------------------------------------------
-    // Internal: add/remove liquidity executors
-    // ---------------------------------------------------------------------
-
-    function _executeAddLiquidity(LiquidityData memory data) internal returns (bytes memory) {
-        // Compute liquidity in here so the public addLiquidity() stays under
-        // the no-via_ir stack budget.
-        uint128 liquidity = _computeLiquidity(data);
-        if (liquidity == 0) revert InsufficientLiquidity();
-
-        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
-            data.key,
-            ModifyLiquidityParams({
-                tickLower: TickMath.minUsableTick(data.key.tickSpacing),
-                tickUpper: TickMath.maxUsableTick(data.key.tickSpacing),
-                liquidityDelta: int256(uint256(liquidity)),
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        // For an ADD, callerDelta is negative on both sides (router owes).
-        int128 d0 = callerDelta.amount0();
-        int128 d1 = callerDelta.amount1();
-        uint256 amount0 = d0 < 0 ? uint256(uint128(-d0)) : 0;
-        uint256 amount1 = d1 < 0 ? uint256(uint128(-d1)) : 0;
-
-        if (amount0 < data.amount0Min) revert InsufficientAAmount();
-        if (amount1 < data.amount1Min) revert InsufficientBAmount();
-
-        _settle(data.key.currency0, data.payer, amount0, data.usePermit2);
-        _settle(data.key.currency1, data.payer, amount1, data.usePermit2);
-
-        return abi.encode(liquidity, amount0, amount1);
-    }
-
-    /// @dev Extracted so the heavy local variables (sqrt prices) live in
-    ///      their own frame and don't pile onto _executeAddLiquidity's stack.
-    function _computeLiquidity(LiquidityData memory data) private view returns (uint128) {
-        (uint160 sqrtPriceX96, , , ) = POOL_MANAGER.getSlot0(data.key.toId());
-        if (sqrtPriceX96 == 0) revert InsufficientLiquidity();
-        return LiquidityAmounts.getLiquidityForAmounts(
-            sqrtPriceX96,
-            TickMath.getSqrtPriceAtTick(TickMath.minUsableTick(data.key.tickSpacing)),
-            TickMath.getSqrtPriceAtTick(TickMath.maxUsableTick(data.key.tickSpacing)),
-            data.amount0Desired,
-            data.amount1Desired
-        );
-    }
-
-    function _executeRemoveLiquidity(LiquidityData memory data) internal returns (bytes memory) {
-        (BalanceDelta callerDelta,) = POOL_MANAGER.modifyLiquidity(
-            data.key,
-            ModifyLiquidityParams({
-                tickLower: TickMath.minUsableTick(data.key.tickSpacing),
-                tickUpper: TickMath.maxUsableTick(data.key.tickSpacing),
-                liquidityDelta: data.liquidityDelta,
-                salt: bytes32(0)
-            }),
-            ""
-        );
-
-        // For a REMOVE, callerDelta is positive on both sides (router is owed).
-        int128 d0 = callerDelta.amount0();
-        int128 d1 = callerDelta.amount1();
-        uint256 amount0 = d0 > 0 ? uint256(uint128(d0)) : 0;
-        uint256 amount1 = d1 > 0 ? uint256(uint128(d1)) : 0;
-
-        if (amount0 < data.amount0Min) revert InsufficientAAmount();
-        if (amount1 < data.amount1Min) revert InsufficientBAmount();
-
-        _take(data.key.currency0, data.recipient, amount0);
-        _take(data.key.currency1, data.recipient, amount1);
-
-        return abi.encode(amount0, amount1);
     }
 
     // ---------------------------------------------------------------------
@@ -1001,10 +768,9 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///                   `Permit2.transferFrom` instead of the token's own
     ///                   allowance ledger. Native-ETH legs ignore the flag.
     /// @dev The `payer == address(this)` branch present in earlier revisions
-    ///      was removed: across every code path that reaches `_settle`,
-    ///      `data.payer` is set to `msg.sender` (or `address(0)` for
-    ///      `removeLiquidity`, which never calls `_settle`). The router
-    ///      itself never owes a settle on its own behalf.
+    ///      was removed: every code path that reaches `_settle` sets
+    ///      `data.payer = msg.sender`. The router itself never owes a
+    ///      settle on its own behalf.
     function _settle(Currency currency, address payer, uint256 amount, bool usePermit2) internal {
         if (amount == 0) return;
         POOL_MANAGER.sync(currency);
@@ -1033,24 +799,5 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     function _take(Currency currency, address recipient, uint256 amount) internal {
         if (amount == 0) return;
         POOL_MANAGER.take(currency, recipient, amount);
-    }
-
-    // ---------------------------------------------------------------------
-    // ERC6909 mint / burn overrides — keep totalSupply in sync.
-    // ---------------------------------------------------------------------
-
-    function _mint(address receiver, uint256 id, uint256 amount) internal override {
-        super._mint(receiver, id, amount);
-        totalSupply[id] += amount;
-    }
-
-    function _burn(address sender, uint256 id, uint256 amount) internal override {
-        super._burn(sender, id, amount);
-        unchecked {
-            // Underflow impossible — super._burn already reverts when the
-            // sender's balance is below `amount`, and totalSupply by
-            // construction is the sum of all balances.
-            totalSupply[id] -= amount;
-        }
     }
 }

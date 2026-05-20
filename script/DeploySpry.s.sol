@@ -14,21 +14,29 @@ import {HookMiner} from "./HookMiner.sol";
 /// @title DeploySpry
 /// @notice Deploys SpryHook (at a salt-mined CREATE2 address that encodes
 ///         the BEFORE_SWAP permission bits) and SpryRouter against the
-///         canonical Uniswap V4 PoolManager.
+///         canonical Uniswap V4 PoolManager. Liquidity management is
+///         provided by Uniswap's canonical PositionManager (see V4_POSITION_MANAGER
+///         below) — Spry does not redeploy or wrap it.
 /// @dev    Required environment:
-///           V4_POOL_MANAGER   address of the canonical PoolManager on the
-///                             target chain (mainnet, Sepolia, Base, etc.)
-///           PRIVATE_KEY       deployer key (forge --broadcast)
+///           V4_POOL_MANAGER       address of the canonical PoolManager on
+///                                 the target chain (mainnet, Sepolia, Base, ...)
+///           V4_POSITION_MANAGER   address of Uniswap's PositionManager on
+///                                 the target chain. The script does NOT
+///                                 call into it — it verifies the address
+///                                 has bytecode so operators don't ship a
+///                                 deployment that points users at a void.
+///           PRIVATE_KEY           deployer key (forge --broadcast)
 ///         Optional environment:
-///           V4_PERMIT2        address of Permit2 on the target chain.
-///                             Defaults to the canonical cross-chain
-///                             address (0x000...22D473..A3). Set this on
-///                             networks where Permit2 is deployed at a
-///                             non-canonical address.
+///           V4_PERMIT2            address of Permit2 on the target chain.
+///                                 Defaults to the canonical cross-chain
+///                                 address (0x000...22D473..A3). Set this on
+///                                 networks where Permit2 is deployed at a
+///                                 non-canonical address.
 ///
 /// Example:
 ///   V4_POOL_MANAGER=0x... \
-///     forge script script/v4/DeploySpry.s.sol \
+///   V4_POSITION_MANAGER=0x... \
+///     forge script script/DeploySpry.s.sol \
 ///       --rpc-url $RPC --broadcast --private-key $PRIVATE_KEY
 contract DeploySpry is Script {
     /// Canonical foundry CREATE2 deployer used by `new C{salt: s}(args)`.
@@ -39,17 +47,21 @@ contract DeploySpry is Script {
     address internal constant CANONICAL_PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
 
     function run() public returns (SpryHook hook, SpryRouter router) {
-        address managerAddr = vm.envAddress("V4_POOL_MANAGER");
-        IPoolManager manager = IPoolManager(managerAddr);
-        address permit2Addr = vm.envOr("V4_PERMIT2", CANONICAL_PERMIT2);
+        address managerAddr     = vm.envAddress("V4_POOL_MANAGER");
+        address positionMgrAddr = vm.envAddress("V4_POSITION_MANAGER");
+        address permit2Addr     = vm.envOr("V4_PERMIT2", CANONICAL_PERMIT2);
+        IPoolManager manager    = IPoolManager(managerAddr);
 
-        console.log("Deploying against PoolManager:", managerAddr);
-        console.log("Using Permit2 at:             ", permit2Addr);
+        console.log("PoolManager:           ", managerAddr);
+        console.log("PositionManager:       ", positionMgrAddr);
+        console.log("Permit2:               ", permit2Addr);
 
-        // Refuse to deploy a router whose *ViaPermit2 entry points would
-        // silently fail at user-call time. Catching this at deploy is
-        // cheaper than discovering it after wallets are wired up.
-        require(permit2Addr.code.length > 0, "Deploy: no code at Permit2 address");
+        // Sanity-check that every external dependency the deployment depends
+        // on actually has code at the supplied address. Catching this at
+        // deploy is cheaper than discovering it after wallets are wired up.
+        require(managerAddr.code.length     > 0, "Deploy: no code at PoolManager address");
+        require(positionMgrAddr.code.length > 0, "Deploy: no code at PositionManager address");
+        require(permit2Addr.code.length     > 0, "Deploy: no code at Permit2 address");
 
         // Mine a salt whose resulting CREATE2 address has the BEFORE_SWAP
         // permission bit set (and only that bit). Pure math, no broadcast.
@@ -68,7 +80,8 @@ contract DeploySpry is Script {
         router = new SpryRouter(manager, IAllowanceTransfer(permit2Addr));
         vm.stopBroadcast();
 
-        console.log("SpryHook deployed at:    ", address(hook));
+        console.log("SpryHook deployed at:  ", address(hook));
         console.log("SpryRouter deployed at:", address(router));
+        console.log("(LP UX provided by PositionManager at:", positionMgrAddr, ")");
     }
 }
