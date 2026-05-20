@@ -104,14 +104,21 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         bool usePermit2;
     }
 
-    /// @notice Multi-hop exact-output payload. The forward `path` is the
-    ///         same shape as `MultiInputData`: each PathKey's
-    ///         intermediateCurrency is the OUTPUT of that hop.
-    ///         `currencyIn` is the user's payment side; `amountOut`
-    ///         is the exact amount of `path[last].intermediateCurrency`
-    ///         the user wants to receive.
+    /// @notice Multi-hop exact-output payload. Follows the V4Router /
+    ///         V4Quoter path-encoding convention so the same `PathKey[]`
+    ///         that we accept here is directly usable as
+    ///         `QuoteExactParams.path` for `V4Quoter.quoteExactOutput`.
+    ///
+    ///         Path semantics (for a swap A -> B -> C, user wants exact C):
+    ///           currencyOut                  = C   (user's output)
+    ///           path[0].intermediateCurrency = A   (user's INPUT side)
+    ///           path[1].intermediateCurrency = B   (mid-chain currency)
+    ///         Equivalently: at each iteration step starting from the
+    ///         tail of `path`, `path[i].intermediateCurrency` is the
+    ///         "from-side" of that hop (= the previous hop's output, or
+    ///         the user's input for `path[0]`).
     struct MultiOutputData {
-        Currency currencyIn;
+        Currency currencyOut;
         PathKey[] path;
         uint256 amountOut;
         address payer;
@@ -388,22 +395,25 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     }
 
     /// @notice Exact-output swap along an arbitrary-length path. The user
-    ///         specifies the FINAL output currency amount they want; the
-    ///         router walks the path BACKWARDS to determine the required
-    ///         input amount of `currencyIn`. Atomic, slippage-checked
-    ///         against `amountInMax`. For a single-hop swap, prefer
-    ///         `swapExactOutputSingle` (lower gas).
-    /// @param  currencyIn the user pays from this currency (= the first
-    ///                    hop's input side)
-    /// @param  path       same forward path representation as `swapExactInput`:
-    ///                    each PathKey's intermediateCurrency is that hop's
-    ///                    OUTPUT. path[last].intermediateCurrency is the
-    ///                    final output the user wants.
-    /// @param  amountOut  exact amount of path[last].intermediateCurrency
-    ///                    to be delivered to `recipient`
+    ///         specifies the FINAL output currency and amount; the router
+    ///         walks the path BACKWARDS to determine the required input
+    ///         amount. Atomic, slippage-checked against `amountInMax`.
+    ///         For a single-hop swap, prefer `swapExactOutputSingle`
+    ///         (lower gas).
+    /// @dev    Path encoding matches V4Router / V4Quoter — see the
+    ///         `MultiOutputData` NatSpec for the rules. In short: for a
+    ///         swap A -> B -> C with `currencyOut = C`, the path is
+    ///         `[{intermediateCurrency: A}, {intermediateCurrency: B}]`.
+    /// @param  currencyOut the user receives this currency (= the last
+    ///                     hop's output side)
+    /// @param  path        per-hop key data, with `path[i].intermediateCurrency`
+    ///                     being the FROM-side of hop i. `path[0]` is the
+    ///                     user's payment currency.
+    /// @param  amountOut   exact amount of `currencyOut` to deliver to
+    ///                     `recipient`
     /// @param  amountInMax revert ceiling on the input amount the user pays
     function swapExactOutput(
-        Currency currencyIn,
+        Currency currencyOut,
         PathKey[] calldata path,
         uint256 amountOut,
         uint256 amountInMax,
@@ -414,7 +424,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 priorBal = _ethPriorBalance();
 
         MultiOutputData memory data = MultiOutputData({
-            currencyIn: currencyIn,
+            currencyOut: currencyOut,
             path: path,
             amountOut: amountOut,
             payer: msg.sender,
@@ -432,7 +442,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     /// @notice Permit2 variant of swapExactOutput. See
     ///         swapExactInputSingleViaPermit2 for the prerequisites.
     function swapExactOutputViaPermit2(
-        Currency currencyIn,
+        Currency currencyOut,
         PathKey[] calldata path,
         uint256 amountOut,
         uint256 amountInMax,
@@ -443,7 +453,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 priorBal = _ethPriorBalance();
 
         MultiOutputData memory data = MultiOutputData({
-            currencyIn: currencyIn,
+            currencyOut: currencyOut,
             path: path,
             amountOut: amountOut,
             payer: msg.sender,
@@ -779,26 +789,34 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     // ---------------------------------------------------------------------
     // Internal: multi-hop exact-output executor
     //
-    // The user provides the SAME forward path representation as exact-input
-    // (each PathKey's intermediateCurrency is the OUTPUT of that hop) plus
-    // the desired final output amount. The executor walks the path in
-    // REVERSE: the last hop runs first with `amountSpecified = +amountOut`,
-    // and the input amount it required becomes the exact-output target for
-    // the previous hop, and so on. Each pool's swap state is independent,
-    // so reversing the iteration order is safe.
+    // Path-encoding convention matches V4Router / V4Quoter:
+    //
+    //   For a swap A -> B -> C, user wants exact C:
+    //     data.currencyOut             = C
+    //     data.path[0].intermediateCurrency = A   (user's INPUT)
+    //     data.path[1].intermediateCurrency = B   (intermediate)
+    //
+    // The executor walks the path in REVERSE: iteration step 0 looks at
+    // path[n-1] and swaps `path[n-1].intermediateCurrency` -> currencyOut
+    // with exactOut = amountOut. The input amount required becomes the
+    // exactOut target for the previous step, and so on. After step n-1
+    // (which uses path[0]), the final input amount has been computed and
+    // we settle the input + take the output.
+    //
+    // Each pool's swap state is independent across hops, so reversing the
+    // iteration order is safe even though pool state mutates per swap.
     // ---------------------------------------------------------------------
     function _executeMultiExactOutput(MultiOutputData memory data) internal returns (bytes memory) {
         uint256 n = data.path.length;
-        Currency currentOut = data.path[n - 1].intermediateCurrency;
+        Currency currentOut = data.currencyOut;
         int256 currentAmount = int256(data.amountOut); // positive = exactOut
         uint256 amountInRequired;
 
         // Walk the path in reverse: i = n-1, n-2, ..., 0.
         for (uint256 step = 0; step < n; ++step) {
             uint256 i = n - 1 - step;
-            Currency currentIn = (i == 0)
-                ? data.currencyIn
-                : data.path[i - 1].intermediateCurrency;
+            // `path[i].intermediateCurrency` is the from-side of this hop.
+            Currency currentIn = data.path[i].intermediateCurrency;
 
             uint256 inAmount = _runExactOutHop(data.path[i], currentIn, currentOut, currentAmount);
 
@@ -807,8 +825,10 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
             if (i == 0) amountInRequired = inAmount;
         }
 
-        _settle(data.currencyIn, data.payer, amountInRequired, data.usePermit2);
-        _take(data.path[n - 1].intermediateCurrency, data.recipient, data.amountOut);
+        // After the loop, `path[0].intermediateCurrency` is the user's input.
+        Currency payerCurrency = data.path[0].intermediateCurrency;
+        _settle(payerCurrency, data.payer, amountInRequired, data.usePermit2);
+        _take(data.currencyOut, data.recipient, data.amountOut);
 
         return abi.encode(amountInRequired);
     }

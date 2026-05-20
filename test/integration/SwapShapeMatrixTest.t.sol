@@ -322,6 +322,10 @@ contract SwapShapeMatrixTest is Test {
 
     // ---------------------------------------------------------------------
     // 8. Multi-hop exact-output happy path.
+    //    V4-style encoding: `currencyOut` is the user's final output;
+    //    `path[0].intermediateCurrency` is the user's input, and each
+    //    subsequent element is the intermediate one hop further toward
+    //    the output. For A -> B -> C with exact C, path = [{A}, {B}].
     // ---------------------------------------------------------------------
     function testMultiHopExactOutputDelivers() public {
         uint256 aBefore = tokenA.balanceOf(address(this));
@@ -331,14 +335,14 @@ contract SwapShapeMatrixTest is Test {
 
         PathKey[] memory path = new PathKey[](2);
         path[0] = PathKey({
-            intermediateCurrency: Currency.wrap(address(tokenB)),
+            intermediateCurrency: Currency.wrap(address(tokenA)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
         path[1] = PathKey({
-            intermediateCurrency: Currency.wrap(address(tokenC)),
+            intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
@@ -346,7 +350,7 @@ contract SwapShapeMatrixTest is Test {
         });
 
         uint256 amountIn = router.swapExactOutput(
-            Currency.wrap(address(tokenA)),
+            Currency.wrap(address(tokenC)),
             path,
             wanted,
             type(uint256).max,
@@ -366,14 +370,14 @@ contract SwapShapeMatrixTest is Test {
     function testMultiHopExactOutputAmountInMaxReverts() public {
         PathKey[] memory path = new PathKey[](2);
         path[0] = PathKey({
-            intermediateCurrency: Currency.wrap(address(tokenB)),
+            intermediateCurrency: Currency.wrap(address(tokenA)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
             hookData: ""
         });
         path[1] = PathKey({
-            intermediateCurrency: Currency.wrap(address(tokenC)),
+            intermediateCurrency: Currency.wrap(address(tokenB)),
             fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
             tickSpacing: TICK_SPACING,
             hooks: IHooks(address(hook)),
@@ -382,7 +386,7 @@ contract SwapShapeMatrixTest is Test {
 
         vm.expectRevert(SpryRouter.ExcessiveInput.selector);
         router.swapExactOutput(
-            Currency.wrap(address(tokenA)),
+            Currency.wrap(address(tokenC)),
             path,
             1e18,
             1,                     // amountInMax impossibly low
@@ -398,7 +402,7 @@ contract SwapShapeMatrixTest is Test {
         PathKey[] memory path = new PathKey[](0);
         vm.expectRevert(SpryRouter.EmptyPath.selector);
         router.swapExactOutput(
-            Currency.wrap(address(tokenA)),
+            Currency.wrap(address(tokenC)),
             path,
             1e18,
             type(uint256).max,
