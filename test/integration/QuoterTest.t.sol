@@ -276,6 +276,100 @@ contract QuoterTest is Test {
     }
 
     // ---------------------------------------------------------------------
+    // Failure modes — quoter surfaces V4's underlying revert wrapped in
+    // `UnexpectedRevertBytes`. The wrapping is the contract's way of
+    // saying "this was not a valid quote outcome." Integrators that catch
+    // quoter calls must handle both `QuoteSwap` (success) and
+    // `UnexpectedRevertBytes` (downstream failure).
+    // ---------------------------------------------------------------------
+
+    /// @dev Quote against a `PoolKey` that was never initialized. V4
+    ///      reverts inside the swap with a pool-not-initialized error,
+    ///      the quoter catches that and rethrows as
+    ///      `UnexpectedRevertBytes`.
+    function testQuoteRevertsOnUninitializedPool() public {
+        ERC20Mock untouched = new ERC20Mock();
+        (Currency c0, Currency c1) = address(untouched) < address(tokenA)
+            ? (Currency.wrap(address(untouched)), Currency.wrap(address(tokenA)))
+            : (Currency.wrap(address(tokenA)), Currency.wrap(address(untouched)));
+        PoolKey memory uninitKey = PoolKey({
+            currency0: c0,
+            currency1: c1,
+            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(hook))
+        });
+
+        vm.expectRevert();
+        quoter.quoteExactInputSingle(
+            IV4Quoter.QuoteExactSingleParams({
+                poolKey: uninitKey,
+                zeroForOne: true,
+                exactAmount: 1e18,
+                hookData: ""
+            })
+        );
+    }
+
+    /// @dev Quote against a pool that has been initialized but never seeded
+    ///      with liquidity. The swap simulation reverts with V4's
+    ///      `NotEnoughLiquidity` (or equivalent zero-liquidity guard); the
+    ///      quoter surfaces it as `UnexpectedRevertBytes`.
+    function testQuoteRevertsOnInitializedButEmptyPool() public {
+        // Build a key for a brand-new pair that we initialize but never
+        // fund. Has to use a token we haven't given liquidity for yet.
+        ERC20Mock empty = new ERC20Mock();
+        (Currency c0, Currency c1) = address(empty) < address(tokenA)
+            ? (Currency.wrap(address(empty)), Currency.wrap(address(tokenA)))
+            : (Currency.wrap(address(tokenA)), Currency.wrap(address(empty)));
+        PoolKey memory emptyKey = PoolKey({
+            currency0: c0,
+            currency1: c1,
+            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(hook))
+        });
+        manager.initialize(emptyKey, SQRT_PRICE_1_1);
+        // No addLiquidity call — pool has zero in-range liquidity.
+
+        vm.expectRevert();
+        quoter.quoteExactInputSingle(
+            IV4Quoter.QuoteExactSingleParams({
+                poolKey: emptyKey,
+                zeroForOne: true,
+                exactAmount: 1e18,
+                hookData: ""
+            })
+        );
+    }
+
+    /// @dev Multi-hop quote where the *intermediate* pool is uninitialized.
+    ///      Pins that failure at any hop bubbles up cleanly through the
+    ///      whole quote, not just the first hop.
+    function testQuoteRevertsOnUninitializedIntermediateHop() public {
+        // Path tokenA -> tokenC where the AC pool was never created in
+        // setUp (we only initialized AB and BC). Use a single hop directly
+        // referencing the missing pool.
+        PathKey[] memory path = new PathKey[](1);
+        path[0] = PathKey({
+            intermediateCurrency: Currency.wrap(address(tokenC)),
+            fee: LPFeeLibrary.DYNAMIC_FEE_FLAG,
+            tickSpacing: TICK_SPACING,
+            hooks: IHooks(address(hook)),
+            hookData: ""
+        });
+
+        vm.expectRevert();
+        quoter.quoteExactInput(
+            IV4Quoter.QuoteExactParams({
+                exactCurrency: Currency.wrap(address(tokenA)),
+                path: path,
+                exactAmount: 1e18
+            })
+        );
+    }
+
+    // ---------------------------------------------------------------------
     // 6. Quote-after-state-shift: do a real swap that moves the pool, then
     //    quote a second swap. The new quote must match the actual second
     //    swap, proving the quoter reads the live pool state at quote time.

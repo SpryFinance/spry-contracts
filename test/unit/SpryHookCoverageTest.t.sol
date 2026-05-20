@@ -56,6 +56,35 @@ contract SpryHookCoverageTest is Test {
     }
 
     // ------------------------------------------------------------------
+    // Drift guard: the deployed hook's address bits must encode exactly
+    // the permission set returned by `permissionsFlags()`. V4 reads the
+    // low 14 bits of the hook address at runtime to decide which
+    // callbacks to invoke; the hook contract has no other way to opt
+    // into a callback. If a future refactor adds a flag to
+    // `permissionsFlags()` (e.g., AFTER_SWAP_FLAG) without also updating
+    // every HookMiner call site, deployment will succeed but V4 will
+    // silently skip the newly-claimed callback. This test fails first.
+    // ------------------------------------------------------------------
+    function testHookAddressBitsMatchPermissionsFlags() public view {
+        uint160 flags = hook.permissionsFlags();
+        // V4 stores hook permission flags in the low 14 bits of the hook
+        // address (see Hooks.ALL_HOOK_MASK == (1 << 14) - 1).
+        uint160 mask = uint160((1 << 14) - 1);
+        assertEq(
+            uint160(address(hook)) & mask,
+            flags & mask,
+            "hook address bits do not encode permissionsFlags()"
+        );
+        // Pin the expected flag set so any change to permissionsFlags()
+        // requires a deliberate test update.
+        assertEq(
+            flags,
+            Hooks.BEFORE_SWAP_FLAG,
+            "permissionsFlags() drifted from BEFORE_SWAP_FLAG"
+        );
+    }
+
+    // ------------------------------------------------------------------
     // Each entry point, called as PoolManager, returns the right selector.
     // ------------------------------------------------------------------
 

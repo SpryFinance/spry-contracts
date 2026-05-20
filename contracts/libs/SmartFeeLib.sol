@@ -55,6 +55,14 @@ library SmartFeeLib {
     ///                       amount.
     /// @return fee V4 dynamic fee in pips (0..1_000_000). Caller must OR in
     ///             OVERRIDE_FEE_FLAG when returning from beforeSwap.
+    /// @dev Degenerate-input fast-path: if either virtual reserve is zero
+    ///      (pool initialized but no liquidity added yet) or the swap
+    ///      specifies a zero amount, the function returns the base safe-zone
+    ///      fee (3 bps -> 3_000 pips). These inputs cannot produce a useful
+    ///      delta and V4 will reject the swap itself with NotEnoughLiquidity
+    ///      or a divide-by-zero downstream; the conservative default is
+    ///      chosen so that the override-fee return value is well-defined
+    ///      regardless of the surrounding swap's failure mode.
     function getDynamicFee(
         uint160 sqrtPriceX96,
         uint128 liquidity,

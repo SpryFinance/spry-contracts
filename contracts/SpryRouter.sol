@@ -903,6 +903,14 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
 
         // The input side's delta is negative (router owes). Magnitude = the
         // input the swap consumed.
+        //
+        // Note: `-inDelta` would overflow if `inDelta == type(int128).min`,
+        // i.e. magnitude == 2^127 (~1.7e38). That is orders of magnitude
+        // beyond any realistic pool's reserves (full-range V4 positions sit
+        // well under uint128.max), and an attempt to swap that much would
+        // already have reverted inside V4's tick-math before we got here.
+        // The same caveat applies to the `-d0` / `-d1` negations in
+        // `_executeSingle` and `_executeMultiExactInput`. Documented once.
         int128 inDelta = zeroForOne ? delta.amount0() : delta.amount1();
         inAmount = uint256(uint128(-inDelta));
     }
