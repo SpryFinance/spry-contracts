@@ -19,6 +19,12 @@ import {HookMiner} from "./HookMiner.sol";
 ///           V4_POOL_MANAGER   address of the canonical PoolManager on the
 ///                             target chain (mainnet, Sepolia, Base, etc.)
 ///           PRIVATE_KEY       deployer key (forge --broadcast)
+///         Optional environment:
+///           V4_PERMIT2        address of Permit2 on the target chain.
+///                             Defaults to the canonical cross-chain
+///                             address (0x000...22D473..A3). Set this on
+///                             networks where Permit2 is deployed at a
+///                             non-canonical address.
 ///
 /// Example:
 ///   V4_POOL_MANAGER=0x... \
@@ -28,11 +34,22 @@ contract DeploySpry is Script {
     /// Canonical foundry CREATE2 deployer used by `new C{salt: s}(args)`.
     address internal constant FORGE_CREATE2 = 0x4e59b44847b379578588920cA78FbF26c0B4956C;
 
+    /// Cross-chain canonical Permit2 deployment. Same address on every EVM
+    /// chain where Permit2 has been deployed.
+    address internal constant CANONICAL_PERMIT2 = 0x000000000022D473030F116dDEE9F6B43aC78BA3;
+
     function run() public returns (SpryHook hook, SpryRouter router) {
         address managerAddr = vm.envAddress("V4_POOL_MANAGER");
         IPoolManager manager = IPoolManager(managerAddr);
+        address permit2Addr = vm.envOr("V4_PERMIT2", CANONICAL_PERMIT2);
 
         console.log("Deploying against PoolManager:", managerAddr);
+        console.log("Using Permit2 at:             ", permit2Addr);
+
+        // Refuse to deploy a router whose *ViaPermit2 entry points would
+        // silently fail at user-call time. Catching this at deploy is
+        // cheaper than discovering it after wallets are wired up.
+        require(permit2Addr.code.length > 0, "Deploy: no code at Permit2 address");
 
         // Mine a salt whose resulting CREATE2 address has the BEFORE_SWAP
         // permission bit set (and only that bit). Pure math, no broadcast.
@@ -48,7 +65,7 @@ contract DeploySpry is Script {
         vm.startBroadcast();
         hook = new SpryHook{salt: salt}(manager);
         require(address(hook) == predicted, "Deploy: hook address mismatch");
-        router = new SpryRouter(manager, IAllowanceTransfer(0x000000000022D473030F116dDEE9F6B43aC78BA3));
+        router = new SpryRouter(manager, IAllowanceTransfer(permit2Addr));
         vm.stopBroadcast();
 
         console.log("SpryHook deployed at:    ", address(hook));

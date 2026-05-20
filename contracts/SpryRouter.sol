@@ -38,6 +38,21 @@ import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 ///         ERC20 tolerance) are pulled in from solmate rather than rolled
 ///         by hand — both are widely audited and already part of the V4
 ///         core's dependency tree (PoolManager itself inherits ERC6909).
+/// @dev    multicall caveat: `multicall(bytes[])` (inherited from
+///         v4-periphery's `Multicall_v4`) is `payable`, and `msg.value`
+///         is preserved across every inner delegatecall. The ETH-refund
+///         logic on this router fires from inside each *swap/liquidity*
+///         entry point against a balance snapshot at that entry point —
+///         the multicall wrapper itself does not refund. As a result, a
+///         multicall whose payload contains no ETH-consuming inner call
+///         (e.g. `[selfPermit, permit2.permit]` with `value > 0`) leaves
+///         the supplied ETH on the router. The router has no admin /
+///         sweep / rescue function, so that ETH is permanently inaccessible.
+///         Callers should NOT attach `msg.value` to a multicall whose
+///         inner calls do not themselves consume ETH. The official
+///         Multicall_v4 is not `virtual` so this router cannot override
+///         it to add a refund step; the constraint is therefore expressed
+///         as a documented caveat rather than a code-level guard.
 contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -72,6 +87,20 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
     ///         via the refund path, but ERC20 outputs would not — rejecting
     ///         uniformly is the only safe default.
     error InvalidRecipient();
+    /// @notice A user-supplied uint256 amount would not fit in int256
+    ///         without setting the sign bit. The router casts amounts to
+    ///         int256 for V4 SwapParams.amountSpecified; in Solidity 0.8.x
+    ///         that cast is a bit reinterpretation, so any value with bit
+    ///         255 set silently becomes negative and flips exactIn/exactOut
+    ///         semantics. Bound exists for defense-in-depth — reaching it
+    ///         requires astronomically large (~5.79e76) amounts.
+    error AmountTooLarge();
+    /// @notice A multi-hop path has a hop whose `intermediateCurrency`
+    ///         equals the previous hop's currency. The resulting PoolKey
+    ///         would have `currency0 == currency1`, which V4 cannot
+    ///         initialize. Surface the misconfiguration with a clear error
+    ///         rather than the obscure pool-not-initialized revert.
+    error InvalidPath();
 
     // Tags for the unlock callback's tagged-union payload.
     uint8 internal constant TAG_SINGLE = 1;
@@ -229,6 +258,14 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         if (recipient == address(this)) revert InvalidRecipient();
     }
 
+    /// @dev Reverts with `AmountTooLarge` if `amount` would set the sign
+    ///      bit of an int256. Wired at every swap entry point so the
+    ///      uint256 -> int256 reinterpretation downstream can never flip
+    ///      exactIn/exactOut semantics or overflow on negation.
+    function _assertAmountFitsInt256(uint256 amount) internal pure {
+        if (amount > uint256(type(int256).max)) revert AmountTooLarge();
+    }
+
     // ---------------------------------------------------------------------
     // Single-hop user entry points
     // ---------------------------------------------------------------------
@@ -243,6 +280,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountOut) {
         _assertRecipient(recipient);
+        _assertAmountFitsInt256(amountIn);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
             kind: Kind.ExactInputSingle,
@@ -273,6 +311,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountIn) {
         _assertRecipient(recipient);
+        _assertAmountFitsInt256(amountOut);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
             kind: Kind.ExactOutputSingle,
@@ -309,6 +348,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountOut) {
         _assertRecipient(recipient);
+        _assertAmountFitsInt256(amountIn);
         _assertNotNative(zeroForOne ? key.currency0 : key.currency1);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
@@ -342,6 +382,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         bytes calldata hookData
     ) external payable ensure(deadline) returns (uint256 amountIn) {
         _assertRecipient(recipient);
+        _assertAmountFitsInt256(amountOut);
         _assertNotNative(zeroForOne ? key.currency0 : key.currency1);
         uint256 priorBal = _ethPriorBalance();
         SingleSwapData memory data = SingleSwapData({
@@ -380,6 +421,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountOut) {
         _assertRecipient(recipient);
+        _assertAmountFitsInt256(amountIn);
         if (path.length == 0) revert EmptyPath();
         uint256 priorBal = _ethPriorBalance();
 
@@ -410,6 +452,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountOut) {
         _assertRecipient(recipient);
+        _assertAmountFitsInt256(amountIn);
         if (path.length == 0) revert EmptyPath();
         _assertNotNative(currencyIn);
         uint256 priorBal = _ethPriorBalance();
@@ -457,6 +500,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountIn) {
         _assertRecipient(recipient);
+        _assertAmountFitsInt256(amountOut);
         if (path.length == 0) revert EmptyPath();
         uint256 priorBal = _ethPriorBalance();
 
@@ -487,6 +531,7 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         uint256 deadline
     ) external payable ensure(deadline) returns (uint256 amountIn) {
         _assertRecipient(recipient);
+        _assertAmountFitsInt256(amountOut);
         if (path.length == 0) revert EmptyPath();
         // path[0].intermediateCurrency is the user's input under the V4
         // reverse-path convention; reject native ETH there since Permit2
@@ -794,6 +839,10 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
         for (uint256 i = 0; i < data.path.length; i++) {
             PathKey memory hop = data.path[i];
             Currency currentOut = hop.intermediateCurrency;
+            // currentIn must differ from currentOut — otherwise the derived
+            // PoolKey would have currency0 == currency1, which V4 cannot
+            // initialize. Fail with a clear error instead.
+            if (currentIn == currentOut) revert InvalidPath();
 
             bool zeroForOne = Currency.unwrap(currentIn) < Currency.unwrap(currentOut);
             PoolKey memory key = zeroForOne
@@ -873,6 +922,9 @@ contract SpryRouter is IUnlockCallback, ERC6909, Multicall_v4, Permit2Forwarder 
             uint256 i = n - 1 - step;
             // `path[i].intermediateCurrency` is the from-side of this hop.
             Currency currentIn = data.path[i].intermediateCurrency;
+            // Reject degenerate hops where the from- and to-side coincide:
+            // V4 cannot initialize a pool with currency0 == currency1.
+            if (currentIn == currentOut) revert InvalidPath();
 
             uint256 inAmount = _runExactOutHop(data.path[i], currentIn, currentOut, currentAmount);
 

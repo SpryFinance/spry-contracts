@@ -13,14 +13,20 @@ import {VirtualReserves} from "./VirtualReserves.sol";
 ///         curve has three zones — safe, alert, danger — keyed off a
 ///         price-shift parameter delta computed from the swap's amount and
 ///         the pool's virtual reserves:
-///           safe   : delta in [-250,  334]            -> 3 bps
-///           alert  : delta in [-500, -250) U (334, 1000] -> linear ramp to 20 bps
-///           danger : delta in [-1000,-500) U (1000, 5000] -> exponential ramp to 50 bps
-///           cap    : everything else                  -> 55 bps
+///           safe   : delta in [-250,  334]            -> 0.30%
+///           alert  : delta in [-500, -250) U (334, 1000] -> linear ramp to 2.00%
+///           danger : delta in [-1000,-500) U (1000, 5000] -> exponential ramp to 5.00%
+///           cap    : everything else                  -> 5.50%
 ///         All deltas are in thousandths (1000 = +100% price shift).
 /// @dev    Returned fee is in V4 dynamic-fee pips (1_000_000 = 100%). Callers
 ///         passing the result back through V4's hook return channel must OR
 ///         in `LPFeeLibrary.OVERRIDE_FEE_FLAG (0x400000)` before returning.
+///         The internal integer representation `feeBps` here is "per-mille
+///         of percent" (i.e. tenths of a basis point): feeBps = 3 -> 0.30%
+///         -> 3_000 V4 pips. Earlier comments referred to this unit as
+///         "bps", which is misleading — proper basis points would put the
+///         safe-zone fee at 30 bps (0.30%), not 3 bps. The implementation
+///         is unchanged; only naming/documentation has been clarified.
 library SmartFeeLib {
     using SafeCast for *;
 
@@ -58,7 +64,7 @@ library SmartFeeLib {
     /// @dev Degenerate-input fast-path: if either virtual reserve is zero
     ///      (pool initialized but no liquidity added yet) or the swap
     ///      specifies a zero amount, the function returns the base safe-zone
-    ///      fee (3 bps -> 3_000 pips). These inputs cannot produce a useful
+    ///      fee (0.30% = 3_000 pips). These inputs cannot produce a useful
     ///      delta and V4 will reject the swap itself with NotEnoughLiquidity
     ///      or a divide-by-zero downstream; the conservative default is
     ///      chosen so that the override-fee return value is well-defined
@@ -134,17 +140,19 @@ library SmartFeeLib {
     ///      (`A_LEFT, B_LEFT` ≠ −(`A_RIGHT, B_RIGHT`)) so that the
     ///      linear-zone formula evaluates to EXACTLY:
     ///
-    ///          _linear(A_LEFT,  B_LEFT,  -250) =  3 bps  (safe boundary)
-    ///          _linear(A_LEFT,  B_LEFT,  -500) = 20 bps  (alert→danger)
-    ///          _linear(A_RIGHT, B_RIGHT, +334) =  3 bps  (after int trunc)
-    ///          _linear(A_RIGHT, B_RIGHT, +1000)= 20 bps  (alert→danger)
+    ///          _linear(A_LEFT,  B_LEFT,  -250) =  3 -> 0.30%  (safe boundary)
+    ///          _linear(A_LEFT,  B_LEFT,  -500) = 20 -> 2.00%  (alert->danger)
+    ///          _linear(A_RIGHT, B_RIGHT, +334) =  3 -> 0.30%  (after int trunc)
+    ///          _linear(A_RIGHT, B_RIGHT, +1000)= 20 -> 2.00%  (alert->danger)
     ///
     ///      i.e. the curve is continuous at all zone transitions in spite
     ///      of the asymmetric algebra. `SmartFeeLibTest.t.sol` pins these
     ///      transitions with explicit boundary tests so any future change
     ///      to the coefficients or the delta formula trips a regression.
     ///
-    ///      Returns the fee in bps of 1000 (0..55).
+    ///      Returns the fee in the internal "feeBps" unit, where feeBps=N
+    ///      maps to (N * BPS_TO_PIPS) V4 pips, i.e. N -> N*0.10%. Range
+    ///      is 0..55 here (mapped to 0..5.50% on the wire).
     function _getCorrectedFee(
         uint256 reserve0,
         uint256 reserve1,
