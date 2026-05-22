@@ -332,4 +332,78 @@ contract MarginalFeeTest is Test {
         assertGe(uint256(m), uint256(rateAt400));
         assertLe(uint256(m), uint256(rateAt800));
     }
+
+    // =====================================================================
+    // Fuzz: random (cumBefore, cumAfter, nSplits) — area equality between
+    // the whole and uniform N-piece subdivision must hold within the
+    // theoretical truncation bound `2·|interval| + 3·N`.
+    // =====================================================================
+
+    function testFuzzPathIndependenceMonotone(int128 c0, int128 c1, uint8 nRaw) public pure {
+        // Bound to realistic cumulative magnitudes.
+        c0 = int128(bound(int256(c0), -10_000, 10_000));
+        c1 = int128(bound(int256(c1), -10_000, 10_000));
+        if (c0 == c1) return;
+        uint256 nSplits = bound(uint256(nRaw), 2, 20);
+
+        int256 totalDelta = int256(c1) - int256(c0);
+        // Skip cases where uniform split rounds the step to 0 — meaningless
+        // and would loop infinitely on the cur=next check.
+        int256 step = totalDelta / int256(nSplits);
+        if (step == 0) return;
+
+        SpryFeeParams memory p = _blueChip();
+
+        uint256 whole = _area(int256(c0), int256(c1), p);
+
+        uint256 split = 0;
+        int256 cur = int256(c0);
+        for (uint256 i = 0; i < nSplits; ++i) {
+            int256 next = (i == nSplits - 1) ? int256(c1) : cur + step;
+            split += _area(cur, next, p);
+            cur = next;
+        }
+
+        // Theoretical bound: whole estimate underestimates true area by ≤
+        // (|interval| + 3 ulps); split likewise by ≤ (|interval| + 3·N).
+        uint256 interval = totalDelta >= 0 ? uint256(totalDelta) : uint256(-totalDelta);
+        uint256 tol = 2 * interval + 3 * nSplits + 100;
+        assertApproxEqAbs(whole, split, tol);
+    }
+
+    /// @dev Fuzz: marginalFee for UNWIND (same-sign, absAfter < absBefore)
+    ///      must equal safeFee regardless of where the cum sits.
+    function testFuzzUnwindAlwaysSafeFee(int128 cBefore, int128 cAfter) public pure {
+        cBefore = int128(bound(int256(cBefore), -10_000, 10_000));
+        cAfter  = int128(bound(int256(cAfter),  -10_000, 10_000));
+
+        // Force same-sign UNWIND: zero or matching signs, |after| < |before|.
+        if (cBefore == 0) return;
+        cAfter = int128(int256(cAfter) % int256(cBefore));      // |after| < |before|, same/zero sign
+        if (cBefore < 0 && cAfter > 0) cAfter = -cAfter;
+        if (cBefore > 0 && cAfter < 0) cAfter = -cAfter;
+
+        if (cBefore == cAfter) return;  // degenerate
+
+        SpryFeeParams memory p = _blueChip();
+        uint24 m = SmartFeeLib.marginalFee(int256(cBefore), int256(cAfter), p);
+        assertEq(uint256(m), uint256(p.safeFee), "unwind always pays safeFee");
+    }
+
+    /// @dev Fuzz: marginalFee is monotone in absAfter when growing on the
+    ///      same side. Doubling the cum reach (within a zone) must not
+    ///      DECREASE the marginal.
+    function testFuzzGrowthMonotone(int128 cAfterRaw) public pure {
+        // Pick a starting cum at 0 and let cAfter grow on the right side.
+        uint256 absAfter = bound(uint256(uint128(cAfterRaw)), 1, 5000);
+
+        SpryFeeParams memory p = _blueChip();
+        uint24 m1 = SmartFeeLib.marginalFee(int256(0), int256(absAfter), p);
+
+        // Compare against absAfter+1 — strictly greater interval, same zero start.
+        uint24 m2 = SmartFeeLib.marginalFee(int256(0), int256(absAfter + 1), p);
+        // marginal is the integral average; on a non-decreasing fee curve the
+        // average is monotone non-decreasing as the upper bound grows.
+        assertGe(uint256(m2), uint256(m1));
+    }
 }
