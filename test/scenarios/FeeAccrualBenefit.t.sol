@@ -4,18 +4,15 @@ pragma solidity ^0.8.26;
 import {ScenarioBase} from "./ScenarioBase.sol";
 
 /// @title FeeAccrualBenefit
-/// @notice Validates Spry's core value claim AND the audit-pass-3 fix
-///         in one suite:
+/// @notice Pins two complementary properties in one suite:
 ///           1. An honest LP earns fees on their own position when swaps
 ///              happen against the pool's liquidity.
 ///           2. A drive-by attacker who add+remove cycles around a fee
 ///              window CANNOT drain fees that accrued on someone else's
-///              position. This is the property the per-owner-salt design
-///              (V4 canonical PositionManager pattern, mirrored here by
-///              LPHelper) preserves. Pre-Commit-1 SpryRouter used a
-///              single shared position with `salt = bytes32(0)` for all
-///              LPs and let any add/remove caller siphon ALL fees — see
-///              the audit-pass-3 report.
+///              position. The per-owner-salt design (V4 canonical
+///              PositionManager pattern, mirrored here by LPHelper) keys
+///              every position by `salt = bytes32(uint256(uint160(owner)))`
+///              so each LP's fee accumulator is strictly their own.
 contract FeeAccrualBenefit is ScenarioBase {
     /// @dev Alice provides liquidity; the trader runs balanced two-way
     ///      swaps so impermanent loss is minimal. Alice withdraws and

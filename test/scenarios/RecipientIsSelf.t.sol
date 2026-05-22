@@ -20,7 +20,7 @@ import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title RecipientIsSelfTest
-/// @notice Documents and pins the audit-pass-2 finding N1 fix: every router
+/// @notice Pins the router's `recipient != address(router)` guard: every
 ///         entry point that takes a `recipient` parameter rejects
 ///         `recipient == address(router)` with `InvalidRecipient`. The
 ///         router has no admin / sweep / rescue function; tokens delivered

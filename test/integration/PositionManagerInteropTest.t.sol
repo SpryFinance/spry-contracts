@@ -32,11 +32,10 @@ import {SpryRouter} from "../../contracts/SpryRouter.sol";
 /// @title PositionManagerInteropTest
 /// @notice End-to-end smoke test proving that Uniswap's canonical
 ///         `PositionManager` (v4-periphery) can manage liquidity on our
-///         pools without modification. This pins the claim made when LP
-///         code was removed from SpryRouter: users interact with
-///         PositionManager for LP and SpryRouter for swaps, the two
-///         operate independently against the shared V4 PoolManager and
-///         our shared SpryHook.
+///         pools without modification. SpryRouter is swap-only; LP
+///         interactions go through PositionManager. The two operate
+///         independently against the shared V4 PoolManager and the
+///         shared SpryHook.
 ///
 ///         The flow:
 ///           1. Deploy PositionManager wired to the same V4 PoolManager
@@ -48,8 +47,9 @@ import {SpryRouter} from "../../contracts/SpryRouter.sol";
 ///              feeGrowthInside accounting keyed by salt = bytes32(tokenId)).
 ///           4. Alice decreases her position via PositionManager. The
 ///              returned amounts include principal + her fee share.
-///           5. We assert she gets MORE out than she put in — the audit-
-///              pass-3 fee-drain protection in canonical form.
+///           5. We assert she gets MORE out than she put in — V4's per-
+///              position fee accounting protects late LPs from being
+///              drained by an early decrease-then-rejoin attack.
 contract PositionManagerInteropTest is Test, DeployPermit2 {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

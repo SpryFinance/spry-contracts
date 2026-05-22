@@ -34,8 +34,7 @@ import {IERC20Minimal} from "v4-core/src/interfaces/external/IERC20Minimal.sol";
 ///         One dedicated interop test (test/integration/PositionManagerInteropTest.t.sol)
 ///         exercises Uniswap's actual PositionManager against our pools so
 ///         we have end-to-end coverage of the canonical LP UX. Every other
-///         test that previously called `router.addLiquidity` for setup now
-///         calls `lp.addLiquidity` here.
+///         test seeds liquidity through `lp.addLiquidity` here.
 contract LPHelper is IUnlockCallback {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
@@ -84,7 +83,6 @@ contract LPHelper is IUnlockCallback {
     }
 
     /// @notice Read the current liquidity of `owner`'s position on `key`.
-    ///         Mirrors what tests previously read via `router.balanceOf(owner, poolId)`.
     function positionLiquidity(PoolKey memory key, address owner) external view returns (uint128) {
         bytes32 positionKey = keccak256(
             abi.encodePacked(

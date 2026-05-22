@@ -23,12 +23,9 @@ import {SmartFeeLib} from "../../contracts/libs/SmartFeeLib.sol";
 /// @title AsymmetricDecimals
 /// @notice Mainnet pools routinely pair tokens with mismatched decimals
 ///         (USDC at 6, WETH at 18). The virtual-reserve ratio in such a
-///         pool can span 12 orders of magnitude. SmartFee's delta math
-///         must remain well-defined and the dynamic fee bounded across
-///         this entire range.
-///         The earlier formulation that divided by an intermediate spot
-///         price would have truncated to zero here; the current direct-
-///         delta formulation has no such failure mode.
+///         pool can span 12 orders of magnitude. SmartFee's direct-delta
+///         math (no intermediate spot-price division) must remain well-
+///         defined and the dynamic fee bounded across this entire range.
 contract AsymmetricDecimals is Test {
     using StateLibrary for IPoolManager;
 

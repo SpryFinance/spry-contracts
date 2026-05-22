@@ -20,25 +20,24 @@ import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title EntryAmountAndPathGuardsTest
-/// @notice Pins audit-pass-2 findings N3 (uint256 amount bound) and N4
-///         (multi-hop path with repeated currency) — both expose silent
-///         pre-existing footguns that the router now surfaces as clear
-///         reverts.
+/// @notice Pins two SpryRouter input guards that surface silent footguns
+///         as clear reverts:
 ///
-///         N3: any amount > type(int256).max gets bit-reinterpreted on
-///         the `int256(uint256)` cast in SwapParams.amountSpecified. For
-///         exactIn that flips the sign back to positive (i.e. exactOut);
-///         for the exact boundary value type(int256).min the negation
-///         overflows. Unreachable in practice (~5.79e76 tokens) but the
-///         silent semantic flip is the kind of footgun that earns the
-///         next reviewer a confused afternoon.
+///         (1) Amount-bound guard. Any swap amount > type(int256).max gets
+///         bit-reinterpreted on the `int256(uint256)` cast inside
+///         SwapParams.amountSpecified. For exactIn that flips the sign
+///         back to positive (i.e. exactOut); for the exact boundary value
+///         type(int256).min the negation overflows. Unreachable in
+///         practice (~5.79e76 tokens), but the router rejects oversized
+///         inputs at the entry point so the semantic flip cannot occur.
 ///
-///         N4: a multi-hop path whose i-th hop has
-///         `path[i].intermediateCurrency == previous-currency` would form
-///         a PoolKey with `currency0 == currency1`. V4 cannot initialize
-///         such a pool, so the call reverts inside the swap simulation
-///         with an obscure pool-not-initialized error. The router now
-///         rejects the misconfiguration up front with `InvalidPath`.
+///         (2) Path repeated-currency guard. A multi-hop path whose i-th
+///         hop has `path[i].intermediateCurrency == previous-currency`
+///         would form a PoolKey with `currency0 == currency1`. V4 cannot
+///         initialize such a pool, so the call would revert inside the
+///         swap simulation with an obscure pool-not-initialized error.
+///         The router rejects the misconfiguration up front with
+///         `InvalidPath`.
 contract EntryAmountAndPathGuardsTest is Test {
     IPoolManager internal manager;
     SpryHook internal hook;

@@ -10,9 +10,9 @@ contract SmartFeeLibTest is Test {
     /// sqrtPriceX96 for price = 1 (i.e. reserve0 == reserve1).
     uint160 internal constant SQRT_PRICE_1_TO_1 = 1 << 96;
 
-    /// BLUE-CHIP tier params, the only tier implemented in Commit 1.
-    /// Mirrors `SpryHook._tierBlueChip()`. Tests in this file are tier-2
-    /// pinned; tests covering tiers 0/1/3/4 land in Commit 2.
+    /// BLUE-CHIP tier params, mirroring `SpryHook._tierBlueChip()`. Tests
+    /// in this file are tier-2 pinned; the other four tiers are exercised
+    /// in `AllTiersMarginalFeeTest.t.sol`.
     function _blueChip() internal pure returns (SpryFeeParams memory) {
         return SpryFeeParams({
             safeLow:     -250, safeHigh:    334,

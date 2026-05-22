@@ -20,10 +20,10 @@ import {SpryRouter} from "../../contracts/SpryRouter.sol";
 import {LPHelper} from "../utils/LPHelper.sol";
 
 /// @title CumulativeFeeBehavior
-/// @notice Exercises the pool-level cumulative-delta + 3-case fee rule
-///         added by Commit 3. Each test isolates one case (Growth /
-///         Unwind / Flip), verifies the fee behavior, and documents the
-///         observable property the cumulative tracker provides.
+/// @notice Exercises the pool-level cumulative-delta + 3-case fee rule.
+///         Each test isolates one case (Growth / Unwind / Flip), verifies
+///         the fee behavior, and documents the observable property the
+///         cumulative tracker provides.
 ///
 ///         All tests use BLUE-CHIP tier (tickSpacing=60) — the same tier
 ///         the rest of the suite uses, ensuring these tests interact with
