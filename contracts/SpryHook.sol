@@ -22,21 +22,16 @@ import {SpryFeeParams} from "./libs/SpryFeeTypes.sol";
 ///         what fee that tier's curve charges for this swap's delta, and
 ///         returns the result as the LP-fee override.
 ///
-///         Five hardcoded tiers ship in v1, dispatched from the pool's
-///         `tickSpacing` field (matching Uniswap V3's fee-tier convention):
+///         Five hardcoded tiers, dispatched from the pool's `tickSpacing`
+///         field (matching Uniswap V3's fee-tier convention):
 ///
 ///             tickSpacing    tier               pairs
 ///             ───────────────────────────────────────────────────────
 ///                   1        0  STABLE          USDC/USDT, stETH/ETH
 ///                  10        1  LIKE-ASSET      wstETH/ETH, USDC/USDC.e
-///                  60        2  BLUE-CHIP       ETH/USDC, WBTC/ETH    ← v0 curve
+///                  60        2  BLUE-CHIP       ETH/USDC, WBTC/ETH
 ///                 200        3  VOLATILE        ETH/SHIB, ETH/PEPE
 ///                1000        4  EXOTIC          low-cap / low-cap
-///
-///         Tiers 0,1,3,4 are introduced as bytecode immutables in a later
-///         commit; this commit lands the dispatch infrastructure with
-///         tier 2 (BLUE-CHIP) fully implemented and the others reverting
-///         with `InvalidTier`.
 ///
 ///         Why `tickSpacing` and not `fee`: V4's `LPFeeLibrary.isDynamicFee`
 ///         uses EXACT equality (`self == DYNAMIC_FEE_FLAG`), so the lower
@@ -66,12 +61,10 @@ contract SpryHook is IHooks {
 
     /// @notice Number of blocks a pool's cumulative-delta window covers.
     ///         At each new block (relative to a pool's `windowStart`), the
-    ///         pool's `signedCum` resets to zero. v1 ships with a one-block
-    ///         window — catches multicall + Flashbots-bundle splitting
-    ///         attacks (always one block by definition) without imposing
-    ///         multi-block tracking overhead. v1.5 can make this an
-    ///         immutable constructor argument to support multi-block
-    ///         windows on fast L2s.
+    ///         pool's `signedCum` resets to zero. A one-block window catches
+    ///         multicall + Flashbots-bundle splitting attacks (which are
+    ///         atomic-within-a-block by definition) without imposing
+    ///         multi-block tracking overhead.
     uint64 public constant BLOCK_WINDOW = 1;
 
     /// @notice Per-pool cumulative-delta state. `signedCum` is the running
@@ -211,14 +204,8 @@ contract SpryHook is IHooks {
     }
 
     // ---------------------------------------------------------------------
-    // Tier registry — five hardcoded curve parameter sets.
-    //
-    // v1 ships these as `pure` returns (bytecode immutables). v1.1 will
-    // change this to a storage-backed mapping gated by Timelock, with
-    // the same shape — no upstream caller changes required.
-    //
-    // Commit 1 implements tier 2 (BLUE-CHIP) only. The remaining tiers
-    // (0, 1, 3, 4) revert with `InvalidTier`; Commit 2 fills them in.
+    // Tier registry — five hardcoded curve parameter sets returned as
+    // `pure` (bytecode immutables, no SLOAD at runtime).
     // ---------------------------------------------------------------------
     function _tierParams(uint8 tier) internal pure returns (SpryFeeParams memory) {
         if (tier == 0) return _tierStable();
@@ -234,14 +221,7 @@ contract SpryHook is IHooks {
     ///      solving for C0 continuity at every safe<->alert<->danger
     ///      transition. See `script/ComputeTierCoefficients.py` for the
     ///      derivation (linear: 2-equation/2-unknown; exponential:
-    ///      log + exponential isolation). The constants below are baked
-    ///      into bytecode as immutables — no SLOADs at runtime.
-    ///
-    ///      The BLUE-CHIP (tier 2) `aRight`/`bRight` differ slightly
-    ///      from the v0 SmartFee values (25_370_000/-5_370_000) to give
-    ///      exact V4-pip-native continuity at the +334 safe→alert
-    ///      boundary, which the v0 code achieved only via integer
-    ///      truncation of an intermediate `feeBps` unit.
+    ///      log + exponential isolation).
 
     /// @dev Tier 0 — STABLE.  safe ±0.01% / alert→0.05% / danger→0.25% / cap 0.50%
     function _tierStable() private pure returns (SpryFeeParams memory) {

@@ -21,17 +21,6 @@ import {SpryFeeParams} from "./SpryFeeTypes.sol";
 ///         Callers passing the result back through V4's hook return
 ///         channel must OR in `LPFeeLibrary.OVERRIDE_FEE_FLAG (0x400000)`
 ///         before returning.
-///
-///         Migration note: prior to this refactor SmartFee was hardcoded
-///         to a single "BLUE-CHIP" curve and used an internal "feeBps"
-///         intermediate unit (1 unit = 0.10% = 1000 V4 pips). The new
-///         design works in V4 pips end-to-end. For backward compatibility
-///         BLUE-CHIP's coefficients are unchanged in spirit; the only
-///         observable difference is at the asymmetric +334 right-safe
-///         boundary, where the new V4-pip-native math returns ~3103 pips
-///         instead of the old integer-truncated 3000 pips. The economic
-///         delta is ≤0.011% — well within audit tolerance and only at one
-///         singular boundary point.
 library SmartFeeLib {
     using SafeCast for *;
 
@@ -140,10 +129,9 @@ library SmartFeeLib {
     ///            delta = -(1000 * amount1Out) / (reserve1 + amount1Out)
     ///
     ///      The asymmetric algebra (one denominator includes the swap,
-    ///      one doesn't) was preserved from the original SmartFee design
-    ///      to maintain continuity at the asymmetric BLUE-CHIP boundaries
-    ///      [-250, +334]. Each tier's safe/alert/danger boundaries are
-    ///      tuned to this asymmetry.
+    ///      one doesn't) gives slightly different magnitudes on the +/− sides
+    ///      of zero; each tier's safe/alert/danger boundaries are picked to
+    ///      match that asymmetry (e.g. BLUE-CHIP's safe zone is [−250, +334]).
     function _computeDelta(
         uint256 reserve0,
         uint256 reserve1,
@@ -198,9 +186,9 @@ library SmartFeeLib {
     }
 
     // =====================================================================
-    // Integral / marginal-fee mode  (v1 path-independent dispatch)
+    // Integral / marginal-fee mode (path-independent dispatch)
     //
-    // Lets SpryHook charge a marginal fee that is independent of how a same-
+    // SpryHook charges a marginal fee that is independent of how a same-
     // trajectory cumulative move is sliced into individual swaps. The
     // marginal fee is the time-average of the underlying piecewise fee curve
     // over the cumulative interval the swap moves through:
@@ -209,15 +197,14 @@ library SmartFeeLib {
     //                      ───────────────────────────────────────
     //                              cumAfter − cumBefore
     //
-    // Because the integral telescopes (F(c_n) − F(c_0) regardless of any
-    // intermediate splits), splitting a same-side same-direction swap into
-    // N pieces costs the exact same total fee as one big swap — closing
-    // the sub-window splitting loophole that the simpler "end-rate" v0
-    // dispatch left open.
+    // The integral telescopes (F(c_n) − F(c_0) regardless of any intermediate
+    // splits), so splitting a same-side same-direction swap into N pieces
+    // costs the exact same total fee as one big swap — closing the sub-
+    // window splitting loophole an end-rate rule would leave open.
     //
-    // The SIGN-FLIP half of a swap (cumulative crossing zero) is still
-    // charged at `safeFee` for the unwind portion — that side is a benefit
-    // to LPs (pool brought toward neutral), not a cost being amortized.
+    // The SIGN-FLIP half of a swap (cumulative crossing zero) is charged at
+    // `safeFee` for the unwind portion — that side is a benefit to LPs
+    // (pool brought toward neutral), not a cost being amortized.
     // =====================================================================
 
     /// @notice Path-independent average fee for a swap that shifts the
@@ -225,8 +212,7 @@ library SmartFeeLib {
     ///         the integral of the tier's fee curve over the interval,
     ///         divided by the interval length, in V4 pips.
     ///
-    /// @dev    Three cases, identical in spirit to the v0 cumulative
-    ///         dispatch:
+    /// @dev    Three cases:
     ///           - GROWTH  (same sign, |after| > |before|): marginal =
     ///             ∫_{|before|}^{|after|} curve / (|after| − |before|)
     ///           - UNWIND  (same sign, |after| ≤ |before|): safeFee

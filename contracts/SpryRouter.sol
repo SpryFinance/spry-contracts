@@ -767,10 +767,9 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     /// @param usePermit2 when true, ERC20 transfers route through
     ///                   `Permit2.transferFrom` instead of the token's own
     ///                   allowance ledger. Native-ETH legs ignore the flag.
-    /// @dev The `payer == address(this)` branch present in earlier revisions
-    ///      was removed: every code path that reaches `_settle` sets
-    ///      `data.payer = msg.sender`. The router itself never owes a
-    ///      settle on its own behalf.
+    /// @dev `payer` is always `msg.sender`: every call site that reaches
+    ///      `_settle` sets `data.payer = msg.sender`, so the router itself
+    ///      never owes a settle on its own behalf.
     function _settle(Currency currency, address payer, uint256 amount, bool usePermit2) internal {
         if (amount == 0) return;
         POOL_MANAGER.sync(currency);
