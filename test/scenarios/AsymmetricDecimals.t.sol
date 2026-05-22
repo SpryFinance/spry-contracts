@@ -104,8 +104,8 @@ contract AsymmetricDecimals is Test {
         sizes[5] = -int256(uint256(liquidity) * 9 / 10); // 90% drain
 
         for (uint256 i = 0; i < sizes.length; ++i) {
-            uint24 feeZ = SmartFeeLib.getDynamicFee(sqrtPriceX96, liquidity, true, sizes[i]);
-            uint24 feeO = SmartFeeLib.getDynamicFee(sqrtPriceX96, liquidity, false, sizes[i]);
+            uint24 feeZ = SmartFeeLib.getDynamicFee(sqrtPriceX96, liquidity, true, sizes[i], hook.tierParams(2));
+            uint24 feeO = SmartFeeLib.getDynamicFee(sqrtPriceX96, liquidity, false, sizes[i], hook.tierParams(2));
             assertLe(feeZ, 55_000, "fee never exceeds 55_000 pips, zeroForOne");
             assertLe(feeO, 55_000, "fee never exceeds 55_000 pips, oneForZero");
             assertGt(feeZ, 0, "fee always non-zero, zeroForOne");

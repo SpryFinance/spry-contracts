@@ -109,7 +109,7 @@ contract SpryHookTest is Test {
     function _expectedFee(bool zeroForOne, int256 amountSpecified) internal view returns (uint24) {
         (uint160 sqrtPriceX96, , , ) = manager.getSlot0(key.toId());
         uint128 liquidity = manager.getLiquidity(key.toId());
-        return SmartFeeLib.getDynamicFee(sqrtPriceX96, liquidity, zeroForOne, amountSpecified);
+        return SmartFeeLib.getDynamicFee(sqrtPriceX96, liquidity, zeroForOne, amountSpecified, hook.tierParams(2));
     }
 
     // ---------------------------------------------------------------------
@@ -184,7 +184,7 @@ contract SpryHookTest is Test {
     function testFeeQueryWithLiquidityPresent() public view {
         (uint160 sqrtPriceX96, , , ) = manager.getSlot0(key.toId());
         uint128 liquidity = manager.getLiquidity(key.toId());
-        uint24 fee = SmartFeeLib.getDynamicFee(sqrtPriceX96, liquidity, true, -int256(1));
+        uint24 fee = SmartFeeLib.getDynamicFee(sqrtPriceX96, liquidity, true, -int256(1), hook.tierParams(2));
         assertEq(fee, 3000);
     }
 

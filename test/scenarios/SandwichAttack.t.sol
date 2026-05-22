@@ -73,7 +73,8 @@ contract SandwichAttack is ScenarioBase {
             _sqrtPriceX96(),
             _poolLiquidity(),
             zeroForOne,
-            -int256(amountIn)
+            -int256(amountIn),
+            hook.tierParams(2)
         );
     }
 }

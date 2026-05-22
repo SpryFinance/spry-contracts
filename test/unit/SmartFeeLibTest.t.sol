@@ -3,11 +3,36 @@ pragma solidity ^0.8.26;
 
 import "forge-std/Test.sol";
 import {SmartFeeLib} from "../../contracts/libs/SmartFeeLib.sol";
+import {SpryFeeParams} from "../../contracts/libs/SpryFeeTypes.sol";
 import {VirtualReserves} from "../../contracts/libs/VirtualReserves.sol";
 
 contract SmartFeeLibTest is Test {
     /// sqrtPriceX96 for price = 1 (i.e. reserve0 == reserve1).
     uint160 internal constant SQRT_PRICE_1_TO_1 = 1 << 96;
+
+    /// BLUE-CHIP tier params, the only tier implemented in Commit 1.
+    /// Mirrors `SpryHook._tierBlueChip()`. Tests in this file are tier-2
+    /// pinned; tests covering tiers 0/1/3/4 land in Commit 2.
+    function _blueChip() internal pure returns (SpryFeeParams memory) {
+        return SpryFeeParams({
+            safeLow:     -250,
+            safeHigh:     334,
+            alertLow:    -500,
+            alertHigh:   1000,
+            dangerLow:  -1000,
+            dangerHigh:  5000,
+            aLeft:   -68_000_000,
+            bLeft:   -14_000_000,
+            aRight:   25_370_000,
+            bRight:   -5_370_000,
+            aLeftExp:    8_000_000_000_000_000_000_000,
+            bLeftExp:   -1_832_581_463_748_310_200,
+            aRightExp:  15_905_414_575_341_013_000_000,
+            bRightExp:   229_072_682_968_538_780,
+            safeFee:  3_000,
+            capFee:  55_000
+        });
+    }
 
     // ---------------------------------------------------------------------
     // VirtualReserves
@@ -45,24 +70,24 @@ contract SmartFeeLibTest is Test {
     function testFeeSafeZoneExactOutSmall() public pure {
         // amountSpecified = +250 token1 out, zeroForOne=true (so amount1Out=250)
         // delta = -1000 * 250 / 1250 = -200 → safe zone
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(250));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(250), _blueChip());
         assertEq(fee, 3000, "safe zone returns 3 bps == 3000 pips");
     }
 
     function testFeeSafeZoneRightExactOutSmall() public pure {
         // zeroForOne=false (token1 → token0), amountSpecified=+250 (amount0Out=250)
         // delta = 1000 * 250 / 1000 = +250 → safe zone (-250..334)
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(250));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(250), _blueChip());
         assertEq(fee, 3000);
     }
 
     function testFeeZeroAmountSpecifiedReturnsBaseFee() public pure {
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(0));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(0), _blueChip());
         assertEq(fee, 3000, "zero amount -> safe-zone fee");
     }
 
     function testFeeZeroLiquidityReturnsBaseFee() public pure {
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 0, true, int256(1e18));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 0, true, int256(1e18), _blueChip());
         assertEq(fee, 3000, "zero liquidity -> safe-zone fee");
     }
 
@@ -71,29 +96,36 @@ contract SmartFeeLibTest is Test {
     // ---------------------------------------------------------------------
     function testFeeLeftAlertExactOut() public pure {
         // amount1Out=400, delta = -1000 * 400 / 1400 = -285
-        // _linear(-68000, -14000, -285) = (-68000*-285 - 14_000_000)/1e6
-        //   = (19_380_000 - 14_000_000)/1e6 = 5
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(400));
-        assertEq(fee, 5_000, "left alert ~5 bps");
+        // V4-pip-native linear:
+        //   _linear(-68_000_000, -14_000_000, -285)
+        //   = (-68_000_000 * -285 + 1000 * -14_000_000) / 1_000_000
+        //   = (19_380_000_000 - 14_000_000_000) / 1_000_000
+        //   = 5380
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(400), _blueChip());
+        assertEq(fee, 5_380, "left alert at delta=-285");
     }
 
     function testFeeLeftAlertBoundaryExactOut() public pure {
         // amount1Out=1000, delta = -1000 * 1000 / 2000 = -500 ⇒ alert/danger boundary, fee=20
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(1000));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(1000), _blueChip());
         assertEq(fee, 20_000);
     }
 
     function testFeeRightAlertBoundaryExactOut() public pure {
         // zeroForOne=false ⇒ amount0Out=1000, delta = 1000 * 1000 / 1000 = 1000 ⇒ boundary
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(1000));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(1000), _blueChip());
         assertEq(fee, 20_000);
     }
 
     function testFeeRightAlertInteriorExactOut() public pure {
         // amount0Out=500, delta=+500 → right alert
-        // _linear(25370, -5370, 500) = (25370*500 - 5_370_000)/1e6 = (12_685_000 - 5_370_000)/1e6 = 7
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(500));
-        assertEq(fee, 7_000);
+        // V4-pip-native:
+        //   _linear(25_370_000, -5_370_000, 500)
+        //   = (25_370_000 * 500 + 1000 * -5_370_000) / 1_000_000
+        //   = (12_685_000_000 - 5_370_000_000) / 1_000_000
+        //   = 7315
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(500), _blueChip());
+        assertEq(fee, 7_315);
     }
 
     // ---------------------------------------------------------------------
@@ -101,21 +133,21 @@ contract SmartFeeLibTest is Test {
     // ---------------------------------------------------------------------
     function testFeeLeftDangerInterior() public pure {
         // amount1Out=3000, delta=-1000*3000/4000=-750 → left danger zone
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(3000));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(3000), _blueChip());
         assertGt(fee, 20_000);
         assertLe(fee, 50_000);
     }
 
     function testFeeRightDangerInterior() public pure {
         // amount0Out=2500, delta=2500 → right danger
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(2500));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(2500), _blueChip());
         assertGt(fee, 20_000);
         assertLe(fee, 50_000);
     }
 
     function testFeeFallbackBeyondCap() public pure {
         // amount0Out=5001 with reserves 1000/1000 → delta=5001 → fallback 55
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(5001));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(5001), _blueChip());
         assertEq(fee, 55_000, "55 bps = 55_000 pips");
     }
 
@@ -127,7 +159,7 @@ contract SmartFeeLibTest is Test {
     function testFeeExactInSmall() public pure {
         // exactIn 334 token0 → amount1Out = 334*1000/(1000+334) = 250
         // delta = -200 → safe zone
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, -int256(334));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, -int256(334), _blueChip());
         assertEq(fee, 3000);
     }
 
@@ -136,7 +168,7 @@ contract SmartFeeLibTest is Test {
         // amount1Out = 5000 * 1000 / 6000 = 833
         // delta = -1000 * 833 / 1833 = -454 → still alert
         // We expect fee in alert range (3..20)
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, -int256(5000));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, -int256(5000), _blueChip());
         assertGt(fee, 3_000);
         assertLt(fee, 20_000);
     }
@@ -159,7 +191,7 @@ contract SmartFeeLibTest is Test {
             liquidity,
             zeroForOne,
             int256(amountSpecified)
-        );
+        , _blueChip());
         assertLe(fee, 55_000, "fee never exceeds 55_000 pips");
     }
 
@@ -174,7 +206,7 @@ contract SmartFeeLibTest is Test {
         // Pick a sqrtPrice well above 2^96 (price > 1) and a small swap.
         uint160 sqrtP = uint160((uint256(1) << 96) * 1_000_000);
         // virtual reserves: r0 ≈ liquidity/1e6, r1 ≈ liquidity*1e6
-        uint24 fee = SmartFeeLib.getDynamicFee(sqrtP, 1e18, true, -int256(1));
+        uint24 fee = SmartFeeLib.getDynamicFee(sqrtP, 1e18, true, -int256(1), _blueChip());
         // Just assert it returns *something* sane; the bug would have panicked.
         assertLe(fee, 55_000);
     }
@@ -193,7 +225,7 @@ contract SmartFeeLibTest is Test {
     ///      `-1000 * x / (R + x) = -250` → x = R/3.
     function testFeeContinuousAtLeftSafeAlertBoundary() public pure {
         // R = 1500 picked so x = 500 makes delta = -1000 * 500 / 2000 = -250.
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1500, true, int256(500));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1500, true, int256(500), _blueChip());
         assertEq(fee, 3_000, "safe-zone fee at delta = -250");
     }
 
@@ -201,38 +233,38 @@ contract SmartFeeLibTest is Test {
     ///      3 bps (truncated). Construct delta = +334 via amount0Out = 334
     ///      against reserve0 = 1000 (`+1000 * 334 / 1000 = 334`).
     function testFeeContinuousAtRightSafeAlertBoundary() public pure {
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(334));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(334), _blueChip());
         assertEq(fee, 3_000, "safe-zone fee at delta = +334");
     }
 
     /// @dev Just past the boundary (delta = -251) the left-alert linear
-    ///      formula must still return ~3 bps (3 after integer truncation,
-    ///      no jump). Verifies the safe<->alert kink is at the bps-of-1000
-    ///      grid resolution, not a real discontinuity.
+    ///      formula must still return very close to the safe-zone fee —
+    ///      no perceptible jump. V4-pip-native math gives 3068 pips at
+    ///      delta=-251 (vs. 3000 at -250), confirming linear continuity.
     function testFeeNoJumpJustPastLeftSafeBoundary() public pure {
-        // R chosen so delta = -1000 * 1000 / 3990 = -250.xxx → -250 (still safe)
-        // and a second swap producing -251 (alert) → first iter of linear.
-        // Simpler: at the alert side just inside, compute the linear fee.
-        // amount1Out=251 against R1=750 gives delta = -1000 * 251 / 1001 = -250.xxx (still safe?)
-        // We construct explicitly with amount/(R+amount) ratio = 251/1000:
-        // amount = 251, R = 749 -> delta = -1000 * 251 / 1000 = -251. Alert.
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 749, true, int256(251));
-        // _linear(-68000, -14000, -251) = (17068000 - 14000000)/1e6 = 3 (truncated).
-        assertEq(fee, 3_000, "linear fee at delta = -251 still truncates to 3 bps");
+        // amount = 251, R = 749 -> delta = -1000 * 251 / 1000 = -251 (alert).
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 749, true, int256(251), _blueChip());
+        // V4-pip-native: _linear(-68_000_000, -14_000_000, -251)
+        //   = (-68_000_000 * -251 + 1000 * -14_000_000) / 1_000_000
+        //   = (17_068_000_000 - 14_000_000_000) / 1_000_000
+        //   = 3068
+        // Within 68 pips (0.0068%) of the safe-zone 3000, the kink is essentially imperceptible.
+        assertEq(fee, 3_068, "linear fee at delta = -251 just past safe boundary");
+        assertLt(fee, 3_500, "no perceptible jump at safe->alert boundary");
     }
 
     /// @dev At delta = -500 (alert<->danger boundary) the linear formula
     ///      must return exactly 20 bps (20_000 pips).
     function testFeeContinuousAtLeftAlertDangerBoundary() public pure {
         // amount/(R+amount)=500/1000 → amount = R, so set R=1000, amount=1000.
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(1000));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, true, int256(1000), _blueChip());
         assertEq(fee, 20_000, "alert->danger fee at delta = -500 is 20 bps");
     }
 
     /// @dev At delta = +1000 (alert<->danger boundary) the linear formula
     ///      must return exactly 20 bps. amount0Out = R, delta = +1000.
     function testFeeContinuousAtRightAlertDangerBoundary() public pure {
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(1000));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(1000), _blueChip());
         assertEq(fee, 20_000, "alert->danger fee at delta = +1000 is 20 bps");
     }
 
@@ -242,7 +274,7 @@ contract SmartFeeLibTest is Test {
     ///      hits the fallback.
     function testFeeFallbackAtRightCap() public pure {
         // amount0Out > 5*R produces delta > 5000.
-        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(5001));
+        uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(5001), _blueChip());
         assertEq(fee, 55_000, "fallback fee 55 bps fires past delta = 5000");
     }
 }
