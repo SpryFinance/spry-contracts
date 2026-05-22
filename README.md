@@ -67,12 +67,8 @@ contracts/
 script/
 ├── DeploySpry.s.sol              CREATE2 deploy script that mines the
 │                                  hook salt.
-├── HookMiner.sol                 CREATE2 salt miner for the hook's
-│                                  permission bits.
-└── ComputeTierCoefficients.py    Off-chain derivation of every tier's
-                                   linear + exponential coefficients
-                                   from its (safeFee, alertEdgeFee,
-                                   dangerEdgeFee, capFee, zone bounds).
+└── HookMiner.sol                 CREATE2 salt miner for the hook's
+                                   permission bits.
 
 test/
 ├── unit/             6 suites    SmartFeeLib + integral-mode math +

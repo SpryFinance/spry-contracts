@@ -452,11 +452,12 @@ Each tier additionally pins its own per-side zone bounds (`safeLow`,
 the volatility expected of that asset class. The linear coefficients
 $(a_L, b_L, a_R, b_R)$ and exponential coefficients
 $(a_L^{\text{exp}}, b_L^{\text{exp}}, a_R^{\text{exp}}, b_R^{\text{exp}})$
-are derived off-line by `script/ComputeTierCoefficients.py` solving the
-boundary-continuity equations, and are baked into the hook's bytecode as
-`pure` immutables (no SLOAD at runtime). See `SpryHook._tierStable()`,
-`_tierLikeAsset()`, `_tierBlueChip()`, `_tierVolatile()`, `_tierExotic()`
-for the exact constants.
+are derived by solving the boundary-continuity equations — two-equation,
+two-unknown for the alert (linear) zone; log + exponential isolation for
+the danger (PRB-Math SD59x18 exponential) zone — and are baked into the
+hook's bytecode as `pure` immutables (no SLOAD at runtime). See
+`SpryHook._tierStable()`, `_tierLikeAsset()`, `_tierBlueChip()`,
+`_tierVolatile()`, `_tierExotic()` for the exact constants.
 
 Why `tickSpacing` and not `key.fee`: V4's `LPFeeLibrary.isDynamicFee` uses
 EXACT equality on the `DYNAMIC_FEE_FLAG`, so the lower bits of `key.fee`
@@ -503,8 +504,8 @@ the deployer picks a per-chain value that covers that horizon:
 | Ethereum mainnet | ~12 s | 1 |
 | Base | ~2 s | 6 |
 | Arbitrum One | ~250 ms | 48 |
-| Optimism | ~2 s | 4 |
-| Polygon PoS | ~2 s | 4 |
+| Optimism | ~2 s | 6 |
+| Polygon PoS | ~2 s | 6 |
 
 The constructor rejects `_blockWindow == 0` with `ZeroBlockWindow` —
 a zero window would degenerate the cumulative tracker into a no-op
@@ -613,11 +614,8 @@ depends on.
 | `HookMiner` | `script/HookMiner.sol` | — | Brute-force CREATE2 salt miner. V4 derives a hook's permissions from the low 14 bits of its address, so the deployer must search for a salt whose resulting `CREATE2` address has exactly the right flag bits set. Solidity-pure; usable both on-chain in deploy scripts and inside `setUp()` of test contracts. |
 
 The script `script/DeploySpry.s.sol` wires these together, mining the hook
-salt and emitting the canonical PoolManager address as a CLI argument so the
-same script works on any chain V4 supports. The Python helper
-`script/ComputeTierCoefficients.py` derives every tier's linear and
-exponential coefficients from its (safeFee, alertEdgeFee, dangerEdgeFee,
-capFee, zone bounds) by solving the boundary-continuity equations.
+salt and reading the canonical PoolManager address from the environment so
+the same script works on any chain V4 supports.
 
 ### 4.2 Call flow
 

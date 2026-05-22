@@ -10,9 +10,9 @@ pragma solidity ^0.8.26;
 /// @dev    All fee values are in V4 pips (1_000_000 = 100%). Zone boundaries
 ///         are in per-mille of pool reserves — the same "delta" unit
 ///         SmartFee uses internally. Linear and exponential coefficients
-///         are PRE-COMPUTED off-chain by solving the boundary-continuity
-///         equations; see `script/ComputeTierCoefficients.py` for the
-///         derivation. The contract trusts them as immutables.
+///         are pre-computed by solving the boundary-continuity equations
+///         (linear: 2-equation/2-unknown; exponential: log + exponential
+///         isolation). The contract trusts them as immutables.
 ///
 ///         Storage cost: this struct lives only in `memory` (returned from
 ///         a pure `_tierParams` dispatch). Five tiers × 128 bytes/tier = 640

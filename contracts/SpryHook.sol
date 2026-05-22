@@ -239,12 +239,11 @@ contract SpryHook is IHooks {
         revert InvalidTier();
     }
 
-    /// @dev All five tier coefficient sets are derived offline from the
-    ///      tier's boundary table (4 fee values × 6 zone bounds) by
-    ///      solving for C0 continuity at every safe<->alert<->danger
-    ///      transition. See `script/ComputeTierCoefficients.py` for the
-    ///      derivation (linear: 2-equation/2-unknown; exponential:
-    ///      log + exponential isolation).
+    /// @dev All five tier coefficient sets are derived from the tier's
+    ///      boundary table (4 fee values × 6 zone bounds) by solving for
+    ///      C0 continuity at every safe<->alert<->danger transition
+    ///      (linear: 2-equation/2-unknown; exponential: log + exponential
+    ///      isolation), then baked into bytecode as `pure` immutables.
 
     /// @dev Tier 0 — STABLE.  safe ±0.01% / alert→0.05% / danger→0.25% / cap 0.50%
     function _tierStable() private pure returns (SpryFeeParams memory) {
