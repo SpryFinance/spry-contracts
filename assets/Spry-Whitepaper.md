@@ -79,8 +79,7 @@ ramp, and a flat **cap** beyond the danger boundary. A per-pool signed
 cumulative tracker accumulates each block's net delta, and the fee is
 charged as the *integral average* of the curve over that cumulative
 interval — a path-independence property that closes the splitting-attack
-loophole an end-rate model would leave open. Curves and integrals are
-derived in section 3.
+loophole. Curves and integrals are derived in section 3.
 
 We implement Spry as a Uniswap V4 hook [5, 6]: a stand-alone contract
 that V4's singleton `PoolManager` consults on every swap of every pool
@@ -493,7 +492,7 @@ is then evaluated against the (cumBefore, cumAfter) pair, not the
 isolated $\Delta$. After the fee is returned, `signedCum` is saturated
 to `int128` bounds and persisted.
 
-`BLOCK_WINDOW = 1` ships in v1; it catches multicall and Flashbots-
+`BLOCK_WINDOW = 1`: a one-block window catches multicall and Flashbots-
 bundle splitting attacks (atomic-within-a-block by definition) without
 imposing multi-block tracking overhead.
 
@@ -889,7 +888,7 @@ on. The recommended position bounds are therefore
 `tickLower = TickMath.minUsableTick(tickSpacing)` and
 `tickUpper = TickMath.maxUsableTick(tickSpacing)`. PositionManager will
 mint concentrated positions too, but the dynamic-fee curve makes no
-guarantees about IL compensation for concentrated ranges in v1.
+guarantees about IL compensation for concentrated ranges.
 
 ### 7.3 LP share transferability
 
@@ -938,18 +937,18 @@ which depend on the pool state at the moment of execution. An MEV bot can
 front-run the victim with a price-shifting trade to push the cumulative
 deeper, observe the victim's higher fee, and back-run to recover capital.
 Because the excess fee accrues to LPs rather than to the attacker, the
-attack does not extract value from LPs — it extracts value from the victim
-taker. Integral mode makes this strictly *more* expensive for the
-attacker than the v0 end-rate design (the front-run + back-run pair must
-itself pay the integral over its own trajectory), but does not eliminate
-it. The mitigation is the standard one (use a low-slippage router with a
-tight `amountOutMin`).
+attack does not extract value from LPs — it extracts value from the
+victim taker. Integral mode makes the attack *self-costly* for the
+attacker: the front-run + back-run pair must itself pay the integral
+over its own cumulative trajectory, so the attacker pockets less than
+the difference between the victim's two fee rates. The attack is not
+eliminated; the mitigation is the standard one (use a low-slippage
+router with a tight `amountOutMin`).
 
 **Multi-block patient MEV.** `BLOCK_WINDOW = 1` means the cumulative
 resets across blocks; an attacker who can afford to wait one block
 between legs pays normal fees. The protection scope is deliberately
 limited to atomic-within-a-block attacks (multicall, Flashbots bundle).
-Multi-block windows are an open design item.
 
 **Hook gas cost.** Each swap pays for one `beforeSwap` call. The integer
 zones (safe / alert) run in approximately 10 000 gas; the danger-zone
@@ -961,8 +960,8 @@ regime.
 
 **No external security audit.** The tests and invariants in Section 9 prove
 the absence of failures in the scenarios we tested. They do not prove the
-absence of bugs. Spry is not audit-ready in the sense of being deployable
-with significant user funds today; see Section 10 for the recommended
+absence of bugs. The codebase is not audit-ready in the sense of being
+deployable with significant user funds; see Section 10 for the recommended
 pre-deploy checklist.
 
 ---
@@ -1098,9 +1097,9 @@ material user funds:
    `DYNAMIC_FEE_FLAG`. Exercise a 3-hop swap end-to-end.
 5. **Bug bounty**: an Immunefi (or equivalent) bounty programme for a
    minimum of 30 days at scale-appropriate payout before opening to retail.
-6. **No protocol fee** at the manager level for the launch period: leave
-   `PoolManager.setProtocolFee` to its default until the audit is closed
-   and the mechanism is well-understood by operators.
+6. **No protocol fee** at the manager level until the audit is closed
+   and the mechanism is well-understood by operators: leave
+   `PoolManager.setProtocolFee` at its default.
 
 ---
 
