@@ -88,10 +88,11 @@ contract Invariants is Test {
         handler = new InvariantHandler(manager, router, lp, key, token0, token1);
 
         // Restrict invariant fuzzer to only the handler's external functions.
-        bytes4[] memory selectors = new bytes4[](3);
+        bytes4[] memory selectors = new bytes4[](4);
         selectors[0] = InvariantHandler.swapExactIn.selector;
         selectors[1] = InvariantHandler.addLiquidity.selector;
         selectors[2] = InvariantHandler.removeLiquidity.selector;
+        selectors[3] = InvariantHandler.rollBlocks.selector;
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
         targetContract(address(handler));
     }
@@ -119,6 +120,35 @@ contract Invariants is Test {
         if (liq == 0) return;
         assertGt(token0.balanceOf(address(manager)), 0, "manager drained of token0 with liquidity present");
         assertGt(token1.balanceOf(address(manager)), 0, "manager drained of token1 with liquidity present");
+    }
+
+    /// @notice The per-pool `signedCum` must remain in a realistic
+    ///         magnitude bound under any handler-driven sequence. The
+    ///         hook saturates to `int128` (≈1.7e38), but the curve only
+    ///         produces |delta| ≤ 1000 per swap (per-mille reserve
+    ///         shift), and a one-block window collects at most a few
+    ///         hundred swaps under the campaign. `1e9` is several orders
+    ///         of magnitude above any realistic accumulation and several
+    ///         dozen orders below the saturation threshold — a failure
+    ///         here would mean either a delta-computation bug or an
+    ///         overflow path in the cumulative accumulation, both of
+    ///         which would corrupt fee dispatch.
+    function invariant_cumulativeBoundedRealistically() public view {
+        (, int128 signedCum) = hook.poolWindow(key.toId());
+        uint256 abs = signedCum >= 0
+            ? uint256(int256(signedCum))
+            : uint256(-int256(signedCum));
+        assertLt(abs, 1_000_000_000, "|signedCum| escaped realistic bound");
+    }
+
+    /// @notice The lazy-reset logic must never write a window-start past
+    ///         the current block. `windowStart` is set to `uint64(block.number)`
+    ///         inside `beforeSwap`, so a value greater than the current
+    ///         block would indicate either a state-corruption bug or a
+    ///         miswire in how the reset branch is taken.
+    function invariant_windowStartNeverInFuture() public view {
+        (uint64 windowStart, ) = hook.poolWindow(key.toId());
+        assertLe(uint256(windowStart), block.number, "windowStart > block.number");
     }
 
     receive() external payable {}

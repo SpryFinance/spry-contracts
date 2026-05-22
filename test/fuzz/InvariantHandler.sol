@@ -145,6 +145,23 @@ contract InvariantHandler is Test {
         vm.stopPrank();
     }
 
+    /// @notice Advance `block.number` by a bounded amount, exercising the
+    ///         hook's lazy window-reset path. Without this op every
+    ///         campaign round would execute inside the genesis block and
+    ///         the reset branch in `beforeSwap` would never fire under
+    ///         random fuzzer input. Bounded to [0, 50] blocks per call —
+    ///         large enough to step well past any plausible BLOCK_WINDOW
+    ///         immutable, small enough to keep `block.number` realistic.
+    function rollBlocks(uint256 n) external {
+        n = bound(n, 0, 50);
+        vm.roll(block.number + n);
+        ++rollCount;
+    }
+
+    /// @notice Ghost counter for the roll-blocks op (mirrors the
+    ///         swap/add/remove counters).
+    uint256 public rollCount;
+
     /// @notice Sum of LP position liquidity across known actors. Used by
     ///         the invariant test to prove the per-owner V4 positions add
     ///         up to the pool's in-range liquidity (alongside the seeder).

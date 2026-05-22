@@ -212,6 +212,17 @@ contract SpryHook is IHooks {
         return _tierParams(tier);
     }
 
+    /// @notice Read a pool's current cumulative-window state. Returns
+    ///         the window's `windowStart` block number and the running
+    ///         `signedCum`. The hook itself never reads this externally;
+    ///         the getter exists for off-chain monitoring, indexers, and
+    ///         the stateful fuzz campaign's cum-bounded invariants.
+    /// @param pid the pool's id
+    function poolWindow(PoolId pid) external view returns (uint64 windowStart, int128 signedCum) {
+        PoolWindow memory w = _poolWindow[pid];
+        return (w.windowStart, w.signedCum);
+    }
+
     /// @notice Maps a pool's `tickSpacing` to its tier index. Pool creators
     ///         pick the desired tickSpacing at `manager.initialize` time,
     ///         which permanently associates the pool with that tier.
