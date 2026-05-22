@@ -104,15 +104,15 @@ contract SpryHook is IHooks {
     }
 
     // ---------------------------------------------------------------------
-    // beforeSwap — cumulative-aware tiered fee dispatch.
+    // beforeSwap — cumulative-aware tiered fee dispatch (integral mode).
     //
     // Three cases keyed off how this swap shifts the pool's running
     // signed cumulative delta:
     //
     //   GROWTH   |cumAfter| > |cumBefore|, same sign:
-    //              fee = curve_rate(cumAfter)
+    //              fee = ∫_{|cumBefore|}^{|cumAfter|} curve / (|after| − |before|)
     //              The swap pushes pool further from neutral; charge the
-    //              rate at the new (deeper) position on the curve.
+    //              average curve rate over the path traversed.
     //
     //   UNWIND   |cumAfter| < |cumBefore|, same sign:
     //              fee = safeFee
@@ -120,17 +120,16 @@ contract SpryHook is IHooks {
     //              tier's base rate (LP still gets paid, no MEV penalty).
     //
     //   FLIP     sign(cumBefore) != sign(cumAfter), both non-zero:
-    //              fee = weighted average of safeFee (over the unwind half)
-    //                  and curve_rate(cumAfter) (over the growth half)
+    //              fee = (safeFee · |before| + ∫_0^{|after|} curve)
+    //                    / (|before| + |after|)
     //
     // Window reset: lazy on first hook entry of a new block window.
     //
-    // Path-dependence note: with the current "end-rate" charging model,
-    // splitting a same-direction swap into N pieces costs LESS than one
-    // big swap (because each piece pays the rate at its smaller cum).
-    // The protection comes from each subsequent swap in the same window
-    // paying a HIGHER rate (the cum is now larger). v1.5 may upgrade
-    // to a path-independent integral-based rule.
+    // Path-independence: within a single same-trajectory cumulative move
+    // the integral telescopes (F(c_n) − F(c_0)), so splitting one big
+    // swap into N pieces costs the exact same total fee. This closes
+    // the sub-window splitting loophole that an "end-rate" rule would
+    // leave open. The full derivation lives on `SmartFeeLib.marginalFee`.
     // ---------------------------------------------------------------------
     function beforeSwap(
         address,
@@ -177,40 +176,16 @@ contract SpryHook is IHooks {
         );
     }
 
-    /// @dev The three-case fee dispatch documented above. Pure logic so it
-    ///      can be unit-tested in isolation.
+    /// @dev Path-independent three-case fee dispatch. Thin wrapper over
+    ///      `SmartFeeLib.marginalFee` — kept as an internal entry point so
+    ///      that future variants (different unwind treatment, multi-block
+    ///      smoothing, etc.) can be slotted in without touching `beforeSwap`.
     function _computeCumulativeFee(
         int256 cumBefore,
         int256 cumAfter,
         SpryFeeParams memory p
     ) internal pure returns (uint24) {
-        // Degenerate: no movement.
-        if (cumBefore == cumAfter) {
-            return uint24(p.safeFee);
-        }
-
-        uint256 absBefore = cumBefore >= 0 ? uint256(cumBefore) : uint256(-cumBefore);
-        uint256 absAfter  = cumAfter  >= 0 ? uint256(cumAfter)  : uint256(-cumAfter);
-
-        // Sign-flip detection: cumBefore and cumAfter have opposite strict signs.
-        bool flipped = (cumBefore > 0 && cumAfter < 0) || (cumBefore < 0 && cumAfter > 0);
-
-        if (!flipped) {
-            // Same sign (or one is zero) — Growth vs Unwind by magnitude.
-            if (absAfter > absBefore) {
-                // GROWTH: charge the curve rate at the new deeper cum point.
-                return SmartFeeLib.feeForDelta(cumAfter, p);
-            } else {
-                // UNWIND: charge the tier's base rate.
-                return uint24(p.safeFee);
-            }
-        } else {
-            // FLIP: weighted average over the unwind half (|cumBefore| at
-            // safeFee) and the growth half (|cumAfter| at curve rate).
-            uint256 growthRate = SmartFeeLib.feeForDelta(cumAfter, p);
-            uint256 weighted = uint256(p.safeFee) * absBefore + growthRate * absAfter;
-            return uint24(weighted / (absBefore + absAfter));
-        }
+        return SmartFeeLib.marginalFee(cumBefore, cumAfter, p);
     }
 
     /// @notice Public view-equivalent of the internal tier dispatch.
