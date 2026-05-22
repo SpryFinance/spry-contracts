@@ -1,107 +1,169 @@
 # <img src="assets/SPRY-Logo.png" width="28" height="28"> Spry
 
-**A dynamic-fee Uniswap V4 hook that protects liquidity providers from
-arbitrage-driven impermanent loss.**
+**A tiered dynamic-fee Uniswap V4 hook with path-independent MEV
+protection within a block window.**
 
-Spry is a small periphery (one hook + one router + four libraries) deployed
-on top of the canonical Uniswap V4 `PoolManager`. Pools that use the Spry
-hook charge takers a fee that scales with how much each individual swap
-shifts the pool's price — small swaps pay the standard 0.30 %, arbitrage-
-sized swaps pay up to 5.5 %. The excess goes back to LPs through V4's normal
-fee path. The economic mechanism is described in detail in
+Spry is a small periphery (one hook + one swap-only router + three
+libraries) deployed against the canonical Uniswap V4 `PoolManager`. Pools
+that use the Spry hook charge takers a fee that scales with how much each
+swap shifts the pool's price *and* with how much the same block has
+already shifted it. Small swaps pay the tier's base rate (1 – 100 bps);
+arbitrage-sized swaps pay up to 9.9 %. The excess accrues to LPs through
+V4's standard fee channel.
+
+The economic mechanism is described in detail in
 [`assets/Spry-Whitepaper.md`](assets/Spry-Whitepaper.md).
+
+## Headline properties
+
+- **Five tier-aware fee curves** dispatched by `PoolKey.tickSpacing`
+  (STABLE / LIKE-ASSET / BLUE-CHIP / VOLATILE / EXOTIC, matching the
+  V3 fee-tier convention).
+- **Four-zone piecewise curve** per tier: a flat **safe** zone, a
+  **linear alert** ramp, an **exponential danger** ramp, and a flat
+  **cap** beyond `dangerHigh`.
+- **Per-pool signed cumulative tracker** (one storage slot per pool)
+  that resets every block. Each swap's fee is computed against the
+  running cumulative, not the swap in isolation.
+- **Integral-mode marginal fee**: the rate charged for a swap is the
+  *average* of the underlying curve over the cumulative interval the
+  swap traverses. Splitting a same-direction swap into N pieces within
+  one block costs **at least as much** as one big swap — the
+  splitting-attack-resistance theorem is path-independence of the
+  integral.
+- **Three-case dispatch** (Growth / Unwind / Flip): the unwind half of
+  a sign-flip is charged at the tier's `safeFee`, so users who push
+  the pool back toward neutral are never penalised.
+- **Swap-only router; LP through Uniswap's canonical
+  `PositionManager`**. Per-owner V4 position salts give correct
+  pro-rata fee accounting without Spry maintaining its own ledger.
 
 ## What's in this repo
 
 ```
 contracts/
-├── SpryHook.sol                  IHooks impl, returns dynamic fee from beforeSwap
-├── SpryRouter.sol                Periphery router: single + multi-hop swap, add / remove liquidity
-├── HookMiner.sol                 CREATE2 salt miner for the hook's permission bits
-├── ModifiedERC6909.sol           Per-(poolId, holder) LP-share ledger inherited by SpryRouter
+├── SpryHook.sol                  IHooks impl: beforeSwap dispatches to
+│                                  SmartFeeLib, returns the dynamic fee
+│                                  OR'd with V4's OVERRIDE_FEE_FLAG.
+│                                  Holds the 5-tier param registry +
+│                                  per-pool cumulative-delta window.
+├── SpryRouter.sol                Swap-only periphery: single + multi-
+│                                  hop, exactIn / exactOut, native ETH,
+│                                  Permit + Permit2.
 └── libs/
-    ├── SmartFeeLib.sol           Three-zone dynamic-fee curve (safe / alert / danger)
-    ├── VirtualReserves.sol       (sqrtPriceX96, liquidity) → uniform-liquidity (R0, R1)
-    └── SafeTransfer.sol          ERC20 helpers tolerant of non-standard tokens
+    ├── SmartFeeLib.sol           Fee math: getDynamicFee,
+    │                              computeSignedDelta, feeForDelta, and
+    │                              the integral-mode marginalFee with
+    │                              per-zone antiderivative helpers.
+    ├── SpryFeeTypes.sol          SpryFeeParams struct (zone bounds +
+    │                              linear / exp coefficients + safeFee /
+    │                              capFee).
+    └── VirtualReserves.sol       (sqrtPriceX96, liquidity) → (R0, R1).
 
 script/
-└── DeploySpry.s.sol              CREATE2 deploy script that mines the hook salt
+├── DeploySpry.s.sol              CREATE2 deploy script that mines the
+│                                  hook salt.
+├── HookMiner.sol                 CREATE2 salt miner for the hook's
+│                                  permission bits.
+└── ComputeTierCoefficients.py    Off-chain derivation of every tier's
+                                   linear + exponential coefficients
+                                   from its (safeFee, alertEdgeFee,
+                                   dangerEdgeFee, capFee, zone bounds).
 
 test/
-├── SmartFeeLibTest                19 tests   fee curve, every zone, fuzz bounds
-├── SpryHookTest                    8 tests   integration via PoolModifyLiquidityTest + PoolSwapTest
-├── SpryHookCoverageTest           10 tests   no-op IHooks entry points + access control
-├── SpryHookZonesTest              10 tests   each fee zone via SpryHook.beforeSwap
-├── SpryRouterSingleTest            7 tests   single-hop happy paths + reverts
-├── SpryRouterMultiTest             6 tests   multi-hop atomic paths
-├── SpryRouterLiquidityTest         7 tests   add / remove + slippage + deadline
-├── SpryRouterBranchTest            4 tests   native ETH refund / invalid callback tag
-├── SpryRouterERC6909Test           9 tests   LP-share transfer / approve / burn-by-recipient
-├── ERC6909Test                    14 tests   ModifiedERC6909 primitives via mock
-├── HookMinerTest                   5 tests   salt mining, CREATE2 verification
-├── SafeTransferTest               11 tests   USDT-style, false-return, reverting, ETH rejecter
-├── ParityTest                      6 tests   native ETH pool, multi-pool isolation, V4 lock
-├── ForkTest                        3 tests   live PoolManager (skips when FORK_RPC_URL unset)
-└── Invariants                      4 tests   handler-driven fuzz, 128k random ops, 0 violations
+├── unit/             6 suites    SmartFeeLib + integral-mode math +
+│                                  hook coverage + miner.
+├── integration/     12 suites    Router single + multi + branches,
+│                                  Permit, Permit2, Quoter,
+│                                  PositionManager interop, tier
+│                                  dispatch, swap-shape matrix, V4 hook
+│                                  surface.
+├── scenarios/       17 suites    Attack simulations: sandwich, JIT,
+│                                  gas-grief, reentrancy, donation,
+│                                  recipient-is-self, first-mint
+│                                  inflation, asymmetric decimals,
+│                                  cumulative-fee behavior,
+│                                  IntegralPathIndependence, …
+├── fuzz/             1 suite     Handler-driven stateful invariants
+│                                  (128k random ops, 0 violations).
+├── fork/             2 suites    Live PoolManager smoke tests
+│                                  (skipped when FORK_RPC_URL unset).
+└── utils/                         LPHelper — per-owner-salt LP shim
+                                   used by tests, mirroring
+                                   PositionManager's fairness model.
 
-Total: 123 tests / 15 suites
+Total: 38 suites / 224 tests
 ```
+
+Production SLOC: **988**.
+Test SLOC: **5 403**.
 
 ## Build & test
 
 ```bash
-forge install              # pulls v4-core, v4-periphery, openzeppelin, prb-math, forge-std
-forge build                # compiles against canonical V4
-forge test                 # runs the whole suite
-forge coverage             # line/branch/function coverage (no via_ir for accuracy)
+forge install     # pulls v4-core, v4-periphery, openzeppelin, prb-math, forge-std, permit2
+forge build       # compiles against canonical V4
+forge test        # runs the whole suite
+forge coverage    # line/branch/function coverage (no via_ir for accuracy)
 ```
 
-The repository uses Foundry. The default profile pins `evm_version = "cancun"`
-and turns `via_ir` off so `forge coverage` produces accurate line numbers.
+The repository uses Foundry. The default profile pins
+`evm_version = "cancun"` and turns `via_ir` off so `forge coverage`
+produces accurate line numbers. Fork tests are auto-skipped unless
+`FORK_RPC_URL` is set.
 
 ## How a pool uses Spry
 
-1. Deploy `SpryHook` at an address whose low 14 bits equal
-   `Hooks.BEFORE_SWAP_FLAG = 0x80`. Use `script/DeploySpry.s.sol`, which mines
-   the CREATE2 salt automatically against the canonical `PoolManager` address
+1. **Deploy the hook**. The deployed address must have its low 14 bits
+   match `Hooks.BEFORE_SWAP_FLAG`. Use `script/DeploySpry.s.sol`, which
+   mines the CREATE2 salt against the canonical `PoolManager` address
    for the target chain.
-2. Initialize a pool whose `PoolKey.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG`
-   (`0x800000`) and `PoolKey.hooks = SpryHook`. The dynamic-fee flag is what
-   tells V4 to consult the hook for the fee on every swap.
-3. Add liquidity through `SpryRouter.addLiquidity` (full-range positions only)
-   or, equivalently, mint a full-range position through the canonical V4
-   `PositionManager`.
+2. **Pick a tier**. Set `PoolKey.tickSpacing` to one of `{1, 10, 60,
+   200, 1000}`; that picks the dispatched fee curve (STABLE / LIKE-
+   ASSET / BLUE-CHIP / VOLATILE / EXOTIC). Spry rejects other
+   tickSpacings with `InvalidTier` on the first swap.
+3. **Set the dynamic-fee flag**. Initialize a pool whose
+   `PoolKey.fee = LPFeeLibrary.DYNAMIC_FEE_FLAG` (`0x800000`) and
+   `PoolKey.hooks = SpryHook`. The flag tells V4 to consult the hook
+   for the fee on every swap.
+4. **Add liquidity through PositionManager**. Spry's router is swap-
+   only; LP positions go through Uniswap's canonical V4
+   `PositionManager`. Full-range positions get the entire pool depth
+   for the SmartFee curve to work against.
 
-That's it — no custom router on the user side is required; any V4-compatible
-router can swap against a Spry pool and the hook will price every swap
-correctly.
+That's it — no custom router on the taker side is required; any V4-
+aware router or aggregator can swap against a Spry pool and the hook
+will price every swap correctly.
 
 ## Why a hook?
 
-Delivering Spry as a Uniswap V4 hook rather than a standalone AMM means:
+Delivering Spry as a Uniswap V4 hook rather than a standalone AMM
+means:
 
-- Zero pool-storage / swap-math attack surface — those live in V4 core, which
-  is already widely audited and deployed.
+- Zero pool-storage / swap-math attack surface — those live in V4
+  core, which is widely audited and deployed.
 - First-class native ETH, multi-hop, ERC-6909 claim tokens, and flash
   accounting come for free.
-- Pools are routable from every V4-aware router and aggregator on day one.
+- Pools are routable from every V4-aware router and aggregator on day
+  one.
 
 Spry pools operate in **full-range** mode (`tickLower = MIN_USABLE_TICK`,
-`tickUpper = MAX_USABLE_TICK`), which makes liquidity uniform across the
+`tickUpper = MAX_USABLE_TICK`), making liquidity uniform across the
 entire price range. Under that constraint the swap math reduces to the
-constant-product `x · y = k` at the current price, which is the regime the
+constant-product `x · y = k` at the current price — the regime the
 SmartFee derivation operates on.
 
 ## Status
 
-- **123 unit + integration + invariant tests passing**, ~100 % line and
-  function coverage on every library; invariants verified across 128 000
-  random handler operations with zero violations.
-- **Not yet externally audited.** Do not deploy with material user funds
-  until an independent audit is complete. See the whitepaper, section
-  *"Pre-deployment checklist"*, for the recommended steps.
-- **No mainnet deployment.** Authoritative addresses, when they exist, will
-  be published in this README alongside the audit report and deployment tag.
+- **224 unit + integration + scenario + invariant + fork tests
+  passing**, ~100 % line and function coverage on every library;
+  invariants verified across 128 000 random handler operations with
+  zero violations across 256 fuzz runs.
+- **Not yet externally audited.** Do not deploy with material user
+  funds until an independent audit is complete.
+- **No mainnet deployment.** Authoritative addresses, when they exist,
+  will be published in this README alongside the audit report and
+  deployment tag.
 
 ## License
 

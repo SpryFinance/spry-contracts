@@ -3,23 +3,40 @@
 ## Abstract
 
 We present **Spry**, a Uniswap V4 hook that prices liquidity-provider (LP) fees
-dynamically as a function of how much each individual swap shifts the pool's
-price. Small swaps pay the standard 0.30 % fee. Larger swaps — typically
-arbitrage rebalancing the pool against an external reference — pay a fee that
-scales up to 5.5 % through a piecewise curve (constant, linear, exponential)
-calibrated to the slope of the impermanent-loss profile. The excess accrues to
-LPs through V4's standard fee channel.
+dynamically as a function of both (a) the immediate price shift of each swap
+and (b) the running net price shift inside the current block. Small swaps pay
+the tier's base rate (1 – 100 bps); large arbitrage swaps pay a fee that ramps
+through a four-zone piecewise curve up to 9.9 %. The excess accrues to LPs
+through V4's standard fee channel.
 
-Spry is implemented as a small periphery — one hook, one router, four libraries
-— deployed against the canonical Uniswap V4 `PoolManager`. Pools operate in
-full-range mode so the underlying swap math reduces to the constant-product
-$x \cdot y = k$ at the current price, preserving uniform-liquidity economics
-while inheriting V4's native ETH, flash-accounting multi-hop, ERC-6909 claim
-tokens, and audited swap engine.
+Spry ships **five hardcoded fee curves**, dispatched by `PoolKey.tickSpacing`
+to match the asset class of the pair: STABLE / LIKE-ASSET / BLUE-CHIP /
+VOLATILE / EXOTIC. Each curve has its own boundary table (safe / alert /
+danger / cap), tuned to the asymmetry of the underlying reserve-shift math.
+
+A per-pool **signed cumulative tracker** records the running net price
+shift inside each block window; each swap's fee is then computed against
+that running cumulative, not against the swap in isolation. The rate
+charged is the **integral-mode marginal fee** — the average of the
+underlying curve over the cumulative interval the swap traverses. Because
+the integral telescopes, splitting one big swap into N smaller pieces
+within the same block pays at least as much total fee as the single
+big swap: integral-mode is the protocol's path-independence theorem and
+the formal defence against multicall- and Flashbots-bundle splitting.
+
+Spry is implemented as a small periphery — one hook, one swap-only router,
+three libraries — deployed against the canonical Uniswap V4 `PoolManager`.
+Liquidity provision goes through Uniswap's canonical V4 `PositionManager`
+(per-owner V4 position salts give correct pro-rata fee accounting without
+Spry maintaining its own ledger). Pools operate in full-range mode so the
+underlying swap math reduces to the constant-product $x \cdot y = k$ at the
+current price, preserving uniform-liquidity economics while inheriting V4's
+native ETH, flash-accounting multi-hop, and audited swap engine.
 
 This whitepaper formalises the impermanent-loss problem, derives the dynamic
-fee curve, specifies the contract surface, and documents the test artefacts
-that back each claim.
+fee curve, specifies the tier registry and cumulative tracker, proves the
+integral-mode path-independence property, walks the contract surface, and
+documents the 224 forge tests that back each claim.
 
 ---
 
@@ -53,19 +70,26 @@ barely moves the pool and far too low on a large rebalance that shifts the
 price meaningfully. The result is that small takers subsidise the IL caused
 by large takers.
 
-**Spry replaces the fixed fee with a fee curve that scales with the swap's
-own contribution to IL**. The fee starts at the V2-default 3 bps when the
-post-swap price is close to the pre-swap price, ramps linearly into a 20 bps
-"alert" band, and ramps exponentially into a 50 bps "danger" band as the
-swap approaches a regime that would inflict large IL on LPs. The curve is
+**Spry replaces the fixed fee with a tier-aware curve that scales with the
+swap's own contribution to IL *and* with the running net IL the same block
+has already inflicted.** Each tier (STABLE, LIKE-ASSET, BLUE-CHIP, VOLATILE,
+EXOTIC — dispatched by `tickSpacing`) defines its own four-zone curve: a
+flat **safe** band, a linear **alert** ramp, an exponential **danger**
+ramp, and a flat **cap** beyond the danger boundary. A per-pool signed
+cumulative tracker accumulates each block's net delta, and the fee is
+charged as the *integral average* of the curve over that cumulative
+interval — a path-independence property that closes the splitting-attack
+loophole an end-rate model would leave open. Curves and integrals are
 derived in section 3.
 
-We implement Spry as a Uniswap V4 hook [5, 6]: a stand-alone contract that
-V4's singleton `PoolManager` consults on every swap of every pool that opts
-into it. This delivery model lets Spry reuse V4's already-audited swap math,
-position accounting, ERC-6909 claim tokens, and native-ETH currency, while
-keeping our own attack surface to ~700 lines of Solidity in one hook, one
-router, and four small libraries.
+We implement Spry as a Uniswap V4 hook [5, 6]: a stand-alone contract
+that V4's singleton `PoolManager` consults on every swap of every pool
+that opts into it. This delivery model lets Spry reuse V4's already-
+audited swap math, position accounting (ERC-721 positions through the
+canonical `PositionManager`), ERC-6909 claim-token primitives, and
+native-ETH currency, while keeping our own attack surface to under 1 000
+lines of Solidity across one hook, one swap-only router, and three small
+libraries.
 
 The rest of this document is organised as follows. Section 2 reviews the
 mathematical background — CPMM mechanics, the impermanent-loss derivation,
@@ -214,9 +238,10 @@ swaps in Spry use exactly one `unlock` call per user transaction.
 `PoolManager.take(currency, to, amount)` helpers handle the branch.
 
 **ERC-6909 claim tokens.** Positive balances accumulated during an `unlock`
-can be claimed as ERC-6909 tokens minted by the manager [7]. We do not
-exercise this feature; Spry mints its own ERC-6909 LP shares from the router
-contract, which is conceptually separate.
+can be claimed as ERC-6909 tokens minted by the manager [7]. Spry does not
+exercise this feature directly — its router fully settles every swap before
+returning — and it does not mint any tokens of its own; LP positions are
+ERC-721s minted by Uniswap's canonical V4 `PositionManager`.
 
 **Tick-based liquidity, used in full-range mode.** V4 inherits Uniswap V3's
 tick-based concentrated-liquidity engine. Spry uses it in **full-range mode
@@ -269,96 +294,94 @@ tier.
 
 ### 3.2 Zone partition
 
-The IL function (IL) is locally flat near $\delta = 0$ and steepens
-asymmetrically as $|\delta|$ grows. We partition the real line into three
-zones whose endpoints lie at the inflection points of $|\mathrm{IL}'|$:
+The IL function is locally flat near $\delta = 0$ and steepens
+asymmetrically as $|\delta|$ grows. Every tier's curve partitions the real
+line into **four zones** whose endpoints lie at the inflection points of
+$|\mathrm{IL}'|$ for that asset class. Using the BLUE-CHIP tier
+(`tickSpacing = 60`) as the canonical example:
 
-| Zone | $\delta$ range (thousandths) | Range as ratio | IL severity |
+| Zone | BLUE-CHIP $\delta$ range (per-mille) | Shape | Fee at endpoints |
 |---|---|---|---|
-| **Safe** (green) | $[-250,\; 334]$ | $\delta \in [-0.25, +0.334]$ | $\lvert\mathrm{IL}\rvert < 1.8\%$ |
-| **Alert left** (orange) | $[-500,\; -250)$ | $\delta \in [-0.5, -0.25)$ | $\lvert\mathrm{IL}\rvert \in [1.8\%, 5.7\%]$ |
-| **Alert right** (orange) | $(334,\; 1000]$ | $\delta \in (0.334, 1.0]$ | $\lvert\mathrm{IL}\rvert \in [1.8\%, 5.7\%]$ |
-| **Danger left** (red) | $[-1000,\; -500)$ | $\delta \in [-1.0, -0.5)$ | $\lvert\mathrm{IL}\rvert \in (5.7\%, 100\%]$ |
-| **Danger right** (red) | $(1000,\; 5000]$ | $\delta \in (1.0, 5.0]$ | $\lvert\mathrm{IL}\rvert \in (5.7\%, 18\%]$ |
-| **Fallback** | $\delta \le -1000$ or $\delta > 5000$ | reserves nearly drained / $>6\times$ price impact | bounded by cap |
+| **Safe** | $[-250,\; 334]$ | constant | $\text{fee} = 3\,000$ pips (0.30 %) |
+| **Alert left** | $[-500,\; -250)$ | linear ramp | $3\,000 \to 20\,000$ pips |
+| **Alert right** | $(334,\; 1000]$ | linear ramp | $3\,000 \to 20\,000$ pips |
+| **Danger left** | $[-1000,\; -500)$ | SD59x18 exponential | $20\,000 \to 50\,000$ pips |
+| **Danger right** | $(1000,\; 5000]$ | SD59x18 exponential | $20\,000 \to 50\,000$ pips |
+| **Cap** | $\delta < -1000$ or $\delta > 5000$ | constant | $55\,000$ pips (5.5 %) |
 
-The asymmetric upper boundary of the safe zone ($+0.334$ rather than $+0.25$)
+The asymmetric upper boundary of the safe zone (`+334` rather than `+250`)
 reflects the IL function's asymmetry — an LP loses less from a 33 % price
-*rise* than from a 25 % price *drop*. The slope coefficients in 3.3 capture
-the same asymmetry.
+*rise* than from a 25 % price *drop* — and matches the asymmetric algebra
+of $(\delta)$ itself. Each tier's coefficients are tuned to match its own
+asymmetry; the structural shape (safe → alert → danger → cap, with linear
++ exponential ramps) is the same for all tiers.
 
 ### 3.3 Fee curve
 
-For each zone the fee, expressed in **V2-style bps of 1000** (so $3$ means
-0.30 %, $55$ means 5.5 %), is:
+Inside each zone the fee is expressed directly in **V4 pips**
+($1\,000\,000 = 100\%$); no intermediate unit conversion is required.
+Using the BLUE-CHIP coefficients hard-coded in `SpryHook._tierBlueChip()`:
 
 **Safe zone** ($-250 \le \delta \le 334$):
 
 $$
-\text{fee}(\delta) = 3
+\text{fee}(\delta) = \text{safeFee} = 3\,000 \text{ pips}
 $$
 
 **Alert left** ($-500 \le \delta < -250$):
 
 $$
-\text{fee}(\delta) = \frac{-68 \cdot \delta - 14 \cdot 1000}{1000}
-\quad
-\text{evaluated as integer division in thousandths}
+\text{fee}(\delta) = \frac{a_L \cdot \delta + 1000 \cdot b_L}{10^{6}}
+\qquad (a_L = -68\,000\,000,\; b_L = -14\,000\,000)
 $$
-
-The corresponding implementation uses
-$A_{\text{LEFT}} = -68\,000$, $B_{\text{LEFT}} = -14\,000$, divisor
-$1\,000\,000$, so a single integer arithmetic produces the result without
-floating-point.
 
 **Alert right** ($334 < \delta \le 1000$):
 
 $$
-\text{fee}(\delta) = \frac{25.37 \cdot \delta - 5.37 \cdot 1000}{1000}
-\quad (A_{\text{RIGHT}} = 25\,370,\; B_{\text{RIGHT}} = -5\,370)
+\text{fee}(\delta) = \frac{a_R \cdot \delta + 1000 \cdot b_R}{10^{6}}
+\qquad (a_R = 25\,525\,525,\; b_R = -5\,525\,525)
 $$
 
 **Danger left** ($-1000 \le \delta < -500$):
 
 $$
-\text{fee}(\delta) = 8 \cdot \exp\!\left(-1.8325814637483102 \cdot \frac{\delta}{1000}\right)
+\text{fee}(\delta) = \frac{a_L^{\text{exp}} \cdot \exp\!\bigl(b_L^{\text{exp}} \cdot \delta / 1000\bigr)}{10^{36}}
 $$
+
+with $a_L^{\text{exp}} \approx 8 \cdot 10^{21}$ and $b_L^{\text{exp}} \approx
+-1.83 \cdot 10^{18}$ (raw SD59x18).
 
 **Danger right** ($1000 < \delta \le 5000$):
 
 $$
-\text{fee}(\delta) = 15.905414575341013 \cdot \exp\!\left(0.22907268296853878 \cdot \frac{\delta}{1000}\right)
+\text{fee}(\delta) = \frac{a_R^{\text{exp}} \cdot \exp\!\bigl(b_R^{\text{exp}} \cdot \delta / 1000\bigr)}{10^{36}}
 $$
 
-**Fallback** (everywhere else):
+with $a_R^{\text{exp}} \approx 1.59 \cdot 10^{22}$ and $b_R^{\text{exp}}
+\approx 2.29 \cdot 10^{17}$.
+
+**Cap** (everywhere else):
 
 $$
-\text{fee}(\delta) = 55
+\text{fee}(\delta) = \text{capFee} = 55\,000 \text{ pips}
 $$
 
-The constants are chosen so the curve is continuous at the alert/danger
-boundaries: $\text{fee}(\pm 500) = 20$ from both the alert and danger
-formulas. At the safe/alert boundary the linear formula evaluates to a value
-in $(3, 4)$; integer truncation of the implementation produces $3$, so the
-visible step at integer-bps resolution is zero.
+The coefficients are chosen so the curve is continuous at every
+safe ↔ alert and alert ↔ danger boundary. At $\delta = \pm 500$ both the
+alert linear formula and the danger exponential formula evaluate to
+$20\,000$ pips; at $\delta = -250$ and $\delta = +334$ the alert formulas
+evaluate to $3\,000$ pips matching the safe zone. The danger-zone
+exponentials use PRB-Math's `SD59x18` fixed-point exponential [8] for
+precision; the safe, alert, and cap zones are pure integer arithmetic.
 
-The danger-zone exponentials use PRB-Math's `SD59x18` fixed-point exponential
-[8] for precision; the safe and alert zones are pure integer arithmetic. At
-$\delta = \pm 1000$ the danger-zone formulas evaluate to approximately
-$49.99 \approx 50$. The hard cap at $\delta \in [-\infty, -1000) \cup (5000,
-\infty)$ produces $55$ as a sentinel for "the swap is beyond what the curve
-covers"; in practice $\delta \le -1000$ means the swap would drain more than
-the available reserve and the swap reverts at the pool's price limit before
-the fee matters.
+The full coefficient set for all five tiers — STABLE, LIKE-ASSET,
+BLUE-CHIP, VOLATILE, EXOTIC — is enumerated in §3.7 below.
 
-### 3.4 Conversion to V4 dynamic fee units
+### 3.4 V4 dynamic-fee return channel
 
 Uniswap V4 expresses dynamic fees in **pips** (millionths): $1\,000\,000 =
-100\%$, $3\,000 = 0.30\%$, $55\,000 = 5.5\%$. Spry computes the algorithm
-above internally in V2's thousandths convention for byte-equivalence with the
-canonical literature, then multiplies the result by $1\,000$ before
-returning. The conversion is exact (no rounding) because both units are
-linear scalings of a common ratio.
+100\%$, $3\,000 = 0.30\%$, $55\,000 = 5.5\%$. Spry computes everything
+end-to-end in pips, so no scaling is needed before returning the value.
 
 The hook returns the fee with `LPFeeLibrary.OVERRIDE_FEE_FLAG = 0x400000` ORed
 into the high bits, which is the signal V4 uses to override the cached
@@ -381,7 +404,7 @@ an 18-decimal token at the stablecoin's "natural" price). The subsequent
 $P_f / P_i$ division would then panic. The direct form $(\delta)$ has no such
 failure mode at any reserve ratio that fits in `uint128`.
 
-### 3.6 Worked example
+### 3.6 Worked example (single swap, BLUE-CHIP)
 
 Consider a Spry pool with virtual reserves $R_x = R_y = 10^{22}$ at the
 sqrt-price $\sqrt{P}_{X96} = 2^{96}$ (a 1:1 price). A swap that asks for
@@ -389,38 +412,172 @@ $\Delta x_{\mathrm{out}} = 5 \cdot 10^{21}$ (50 % of the token-0 reserve)
 yields
 
 $$
-\delta = \frac{1000 \cdot 5 \cdot 10^{21}}{10^{22}} = 500
+\delta = \frac{1000 \cdot 5 \cdot 10^{21}}{10^{22}} = +500
 $$
 
-which lands at the alert/danger right boundary. The fee charged is
-
-$$
-\text{fee}(500) = \frac{25\,370 \cdot 500 - 5\,370 \cdot 1\,000}{1\,000\,000}
-= \frac{12\,685\,000 - 5\,370\,000}{1\,000\,000}
-= 7 \text{ bps}_{\text{of-1000}} = 7\,000 \text{ pips}
-$$
+In a fresh block (cumBefore $= 0$), `marginalFee(0, 500, p)` integrates
+the BLUE-CHIP curve over $[0, 500]$: the safe zone contributes
+$\text{safeFee} \cdot 334 = 1\,002\,000$ pips·delta, the alert ramp from
+$334$ to $500$ contributes $\approx 849\,690$ pips·delta, so the marginal
+average is roughly $1\,852\,000 / 500 \approx 3\,703$ pips — well below
+the point-evaluated rate at $\delta = 500$ (which is $\approx 7\,237$
+pips) because most of the path was still in the safe zone.
 
 A swap of the same magnitude in the opposite direction, asking for
-$\Delta y_{\mathrm{out}} = 5 \cdot 10^{21}$ of the token-1 reserve, yields
+$\Delta y_{\mathrm{out}} = 5 \cdot 10^{21}$ of the token-1 reserve,
+yields
 
 $$
 \delta = -\frac{1000 \cdot 5 \cdot 10^{21}}{10^{22} + 5 \cdot 10^{21}}
-= -\frac{5 \cdot 10^{24}}{1.5 \cdot 10^{22}}
-= -333
+\approx -333
 $$
 
-which lands inside left-alert. The fee is
+which lands just inside left-alert; the integral-mode marginal is a
+similar blend of safe + alert contributions.
+
+### 3.7 Tier registry
+
+Spry ships five hardcoded fee curves, dispatched by `PoolKey.tickSpacing`
+to match the asset class of the pair:
+
+| Tier | `tickSpacing` | Example pairs | safeFee | alertEdge | dangerEdge | capFee |
+|---|---|---|---|---|---|---|
+| **STABLE** | 1 | USDC/USDT, stETH/ETH | 100 (0.01 %) | 500 (0.05 %) | 2 500 (0.25 %) | 5 000 (0.50 %) |
+| **LIKE-ASSET** | 10 | wstETH/ETH, USDC/USDC.e | 500 (0.05 %) | 2 000 (0.20 %) | 5 000 (0.50 %) | 10 000 (1.00 %) |
+| **BLUE-CHIP** | 60 | ETH/USDC, WBTC/ETH | 3 000 (0.30 %) | 20 000 (2.00 %) | 50 000 (5.00 %) | 55 000 (5.50 %) |
+| **VOLATILE** | 200 | ETH/SHIB, ETH/PEPE | 5 000 (0.50 %) | 30 000 (3.00 %) | 75 000 (7.50 %) | 90 000 (9.00 %) |
+| **EXOTIC** | 1000 | low-cap / low-cap | 10 000 (1.00 %) | 50 000 (5.00 %) | 95 000 (9.50 %) | 99 000 (9.90 %) |
+
+Each tier additionally pins its own per-side zone bounds (`safeLow`,
+`safeHigh`, `alertLow`, `alertHigh`, `dangerLow`, `dangerHigh`), tuned to
+the volatility expected of that asset class. The linear coefficients
+$(a_L, b_L, a_R, b_R)$ and exponential coefficients
+$(a_L^{\text{exp}}, b_L^{\text{exp}}, a_R^{\text{exp}}, b_R^{\text{exp}})$
+are derived off-line by `script/ComputeTierCoefficients.py` solving the
+boundary-continuity equations, and are baked into the hook's bytecode as
+`pure` immutables (no SLOAD at runtime). See `SpryHook._tierStable()`,
+`_tierLikeAsset()`, `_tierBlueChip()`, `_tierVolatile()`, `_tierExotic()`
+for the exact constants.
+
+Why `tickSpacing` and not `key.fee`: V4's `LPFeeLibrary.isDynamicFee` uses
+EXACT equality on the `DYNAMIC_FEE_FLAG`, so the lower bits of `key.fee`
+cannot be repurposed for a tier index without losing the dynamic-fee
+dispatch. `tickSpacing` is the natural alternative because (a) it is
+already part of the `PoolKey` identity, (b) it conventionally encodes
+fee tier in V3, and (c) different pools with the same tokens and hook
+but different tickSpacings are distinct V4 pools — so a pair can
+genuinely co-exist at multiple tiers if the market wants it to.
+
+### 3.8 Per-pool cumulative tracker
+
+Per-swap dispatch (evaluating the curve at the swap's own $\delta$) is
+robust to one big trade but vulnerable to **splitting**: an attacker
+who breaks one large $\delta$ into $N$ smaller swaps within the same
+block pays $N$ small-swap fees, each evaluated near $\delta = 0$. To
+close that loophole, every Spry pool maintains a one-storage-slot
+cumulative window:
+
+```solidity
+struct PoolWindow {
+    uint64  windowStart;   // block.number of the active window
+    int128  signedCum;     // running sum of signed deltas within it
+}
+mapping(PoolId => PoolWindow) internal _poolWindow;
+```
+
+At each `beforeSwap` the hook lazily resets the window on a new block
+(`block.number >= windowStart + BLOCK_WINDOW`), reads the current
+`signedCum`, computes the swap's contribution `Δ`, and computes
+$\text{cumBefore}, \text{cumAfter} = \text{cumBefore} + \Delta$. The fee
+is then evaluated against the (cumBefore, cumAfter) pair, not the
+isolated $\Delta$. After the fee is returned, `signedCum` is saturated
+to `int128` bounds and persisted.
+
+`BLOCK_WINDOW = 1` ships in v1; it catches multicall and Flashbots-
+bundle splitting attacks (atomic-within-a-block by definition) without
+imposing multi-block tracking overhead.
+
+### 3.9 Integral-mode marginal fee
+
+Given (cumBefore, cumAfter) the hook dispatches to
+`SmartFeeLib.marginalFee(cumBefore, cumAfter, p)`. The case analysis is:
+
+- **GROWTH** — same sign and $|\text{after}| > |\text{before}|$. The
+  swap pushes the pool further from neutral; the fee is the
+  *integral average* of the curve over the cumulative interval:
+
+  $$
+  \text{marginal} = \frac{1}{|\text{after}| - |\text{before}|}
+  \int_{|\text{before}|}^{|\text{after}|}\!\text{fee}(x)\,dx
+  $$
+
+- **UNWIND** — same sign and $|\text{after}| \le |\text{before}|$. The
+  swap brings the pool toward neutral; the fee is the tier's
+  `safeFee`. LP still gets paid; the unwinder is not penalised for
+  fixing the pool.
+
+- **FLIP** — opposite strict signs. The swap crosses zero; the fee
+  is the weighted average over the unwind half (charged at
+  `safeFee`) and the growth half (charged at the integral over
+  $[0, |\text{after}|]$):
+
+  $$
+  \text{marginal}
+  = \frac{\text{safeFee}\cdot|\text{before}| + \int_0^{|\text{after}|}\!\text{fee}(x)\,dx}{|\text{before}|+|\text{after}|}
+  $$
+
+The integral is evaluated piecewise across the four zones using the
+antiderivatives:
 
 $$
-\text{fee}(-333) = \frac{-68\,000 \cdot (-333) - 14\,000 \cdot 1\,000}{1\,000\,000}
-= \frac{22\,644\,000 - 14\,000\,000}{1\,000\,000}
-= 8 \text{ bps}_{\text{of-1000}} = 8\,000 \text{ pips}
+F_{\text{safe}}(\delta) = \text{safeFee}\cdot\delta
 $$
 
-The asymmetry — a swap that takes 50 % of one reserve pays $7$ bps; the
-mirror swap pays $8$ bps — reflects the underlying asymmetry of the IL
-function: token-1 reserves are scarcer relative to value at the boundary, so
-draining them carries a slightly higher IL cost.
+$$
+F_{\text{alert}}(\delta) = \frac{a\cdot\delta^2/2 + 1000\cdot b\cdot\delta}{10^{6}}
+$$
+
+$$
+F_{\text{danger}}(\delta) = \frac{a^{\text{exp}}\cdot 10^{3}}{b^{\text{exp}}}\cdot \exp\!\bigl(b^{\text{exp}}\cdot\delta / 1000\bigr)
+$$
+
+$$
+F_{\text{cap}}(\delta) = \text{capFee}\cdot\delta
+$$
+
+with the obvious side-substitutions ($a := a_R$ or $-a_L$;
+$b := b_R$ or $b_L$) for the right vs left half of the curve.
+
+**Path-independence (statement).** Let $c_0 = c^{(0)} < c^{(1)} <
+\dots < c^{(N)} = c_n$ be any monotone partition of a trajectory inside
+one side. Then in real arithmetic
+
+$$
+\sum_{i=1}^{N} \text{marginal}_i \cdot \bigl(c^{(i)} - c^{(i-1)}\bigr)
+\;=\;
+\text{marginal}_{\text{full}} \cdot (c_n - c_0)
+$$
+
+because the integral telescopes ($F(c_n) - F(c_0)$ regardless of any
+intermediate splits). In integer arithmetic the equality holds within
+$|whole - \Sigma split| \le 2 \cdot |I| + 3 \cdot N$ (one ulp per
+zone-crossing inside `_integral` plus up to $(I - 1)$ per
+`area / interval` truncation per piece). The bound is asserted by
+`testFuzzPathIndependenceMonotone` over 256 random
+$(c_0, c_n, N)$ triples.
+
+**Splitting-attack consequence.** Two swaps of the same total token
+amount, one taken whole and the other split into $N$ pieces inside the
+same block, produce DIFFERENT cumulative trajectories: each smaller
+piece's $\delta$ is computed against post-previous-swap reserves which
+are more imbalanced, so the cumulative travels DEEPER per unit of
+token. Combined with path-independence over a fixed trajectory, this
+means the splitter's total fee is **at least as high** as the big-swap
+fee — and strictly higher once any piece's trajectory crosses
+`safeHigh`. The property is asserted end-to-end by
+`testAlertCrossingSplitterPaysStrictlyMore` and
+`testFinerSplitPaysMoreThanCoarserSplit` in
+`test/scenarios/IntegralPathIndependence.t.sol`.
 
 ---
 
@@ -433,19 +590,21 @@ depends on.
 
 ### 4.1 Contracts
 
-| Contract | Path | LoC | Role |
+| Contract | Path | SLOC | Role |
 |---|---|---|---|
-| `SpryHook` | `contracts/SpryHook.sol` | 158 | `IHooks` implementation. Declares only `BEFORE_SWAP_FLAG` in its permissions bitmap; the other eight entry points are present for interface completeness and revert if anyone but `PoolManager` calls them. Active body reads `slot0` + `liquidity` and forwards them to `SmartFeeLib.getDynamicFee`, returning the result OR-ed with `LPFeeLibrary.OVERRIDE_FEE_FLAG`. |
-| `SpryRouter` | `contracts/SpryRouter.sol` | 491 | Periphery router. Public methods: `swapExactInputSingle`, `swapExactOutputSingle`, `swapExactInput` (unbounded multi-hop), `addLiquidity`, `removeLiquidity`. Every method opens exactly one `PoolManager.unlock` call. Slippage, deadline, native-ETH refund, fee-on-transfer-tolerant settlement live here. The router inherits `ModifiedERC6909` so LP shares are issued per `poolId` and can be transferred / approved / burned independently. |
-| `HookMiner` | `contracts/HookMiner.sol` | 50 | Brute-force CREATE2 salt miner. V4 derives a hook's permissions from the low 14 bits of its address, so the deployer must search for a salt whose resulting `CREATE2` address has exactly the right flag bits set. Solidity-pure; usable both on-chain in deploy scripts and inside `setUp()` of test contracts. |
-| `ModifiedERC6909` | `contracts/ModifiedERC6909.sol` | 66 | Per-`(poolId, holder)` LP-share ledger with per-id allowance and infinite-approval shortcut. Used by `SpryRouter` to track full-range positions on a per-user basis. |
-| `SmartFeeLib` | `contracts/libs/SmartFeeLib.sol` | 150 | The fee curve. Public entry: `getDynamicFee(sqrtPriceX96, liquidity, zeroForOne, amountSpecified)` returns a `uint24` fee in V4 pips. Internally calls `VirtualReserves.fromState` and dispatches across the three zones. |
-| `VirtualReserves` | `contracts/libs/VirtualReserves.sol` | 30 | Converts the V4 pool state $(\sqrt{P}_{X96}, L)$ into V2-equivalent virtual reserves $(R_0, R_1)$. Uses `FullMath.mulDiv` for 512-bit intermediate precision at extreme prices. |
-| `SafeTransfer` | `contracts/libs/SafeTransfer.sol` | 32 | ERC-20 helpers tolerant of non-standard tokens (USDT-style no-return-data, `transferFrom` with non-bool return). Used by the router during settlement. |
+| `SpryHook` | `contracts/SpryHook.sol` | 241 | `IHooks` implementation. Declares only `BEFORE_SWAP_FLAG` in its permissions bitmap; the other entry points are present for interface completeness and revert if anyone but `PoolManager` calls them. The active body reads `slot0` + `liquidity`, computes the swap's signed delta via `SmartFeeLib.computeSignedDelta`, lazily resets the per-pool cumulative window on a new block, accumulates the delta into `signedCum`, dispatches to `SmartFeeLib.marginalFee` for the integral-mode fee, and returns the result OR-ed with `LPFeeLibrary.OVERRIDE_FEE_FLAG`. The contract also holds the 5-tier parameter registry returned by `_tierParams(uint8)` and dispatched from `PoolKey.tickSpacing`. |
+| `SpryRouter` | `contracts/SpryRouter.sol` | 509 | Swap-only periphery router. Public methods: `swapExactInputSingle`, `swapExactOutputSingle`, `swapExactInput` (unbounded multi-hop), `swapExactOutput`, and their Permit / Permit2 / multicall variants. Every method opens exactly one `PoolManager.unlock` call. Slippage, deadline, native-ETH refund, and fee-on-transfer-tolerant settlement live here. The router holds no funds at rest and never mints LP shares — liquidity provision goes through Uniswap's canonical V4 `PositionManager`. |
+| `SmartFeeLib` | `contracts/libs/SmartFeeLib.sol` | 203 | Fee math. Public entries: `getDynamicFee` (curve evaluated at this swap's delta), `feeForDelta` (curve at an arbitrary cum point), `computeSignedDelta` (the signed per-mille reserve-shift indicator), and `marginalFee(cumBefore, cumAfter, p)` (the integral-mode dispatch used by SpryHook). Internally dispatches across the four zones — safe (constant), alert (linear), danger (PRB-Math SD59x18 exponential), cap (constant) — with per-zone antiderivative helpers (`_alertArea`, `_dangerArea`) that stitch a piecewise integral across zone boundaries. |
+| `SpryFeeTypes` | `contracts/libs/SpryFeeTypes.sol` | 19 | The `SpryFeeParams` struct: six `int32` zone bounds, four `int64` linear coefficients, four `int128` SD59x18 exponential coefficients, plus `uint32 safeFee` and `uint32 capFee`. One struct per tier, returned by `SpryHook._tierParams` as a bytecode immutable. |
+| `VirtualReserves` | `contracts/libs/VirtualReserves.sol` | 16 | Converts the V4 pool state $(\sqrt{P}_{X96}, L)$ into V2-equivalent virtual reserves $(R_0, R_1)$. Uses `FullMath.mulDiv` for 512-bit intermediate precision at extreme prices. |
+| `HookMiner` | `script/HookMiner.sol` | — | Brute-force CREATE2 salt miner. V4 derives a hook's permissions from the low 14 bits of its address, so the deployer must search for a salt whose resulting `CREATE2` address has exactly the right flag bits set. Solidity-pure; usable both on-chain in deploy scripts and inside `setUp()` of test contracts. |
 
 The script `script/DeploySpry.s.sol` wires these together, mining the hook
 salt and emitting the canonical PoolManager address as a CLI argument so the
-same script works on any chain V4 supports.
+same script works on any chain V4 supports. The Python helper
+`script/ComputeTierCoefficients.py` derives every tier's linear and
+exponential coefficients from its (safeFee, alertEdgeFee, dangerEdgeFee,
+capFee, zone bounds) by solving the boundary-continuity equations.
 
 ### 4.2 Call flow
 
@@ -492,18 +651,20 @@ only reads two storage slots and returns a number.
 The components we ship that touch user value are:
 
 1. `SpryRouter` — receives user tokens, settles them into `PoolManager`,
-   takes outputs back to the user.
-2. `ModifiedERC6909` — accounts LP shares; a bug here could double-mint or
-   block legitimate redemptions.
-3. `SmartFeeLib` — sets the fee; a bug here could under-charge takers
+   takes outputs back to the user. The router holds no funds at rest, has
+   no admin / sweep / rescue function, and never mints any tokens.
+2. `SmartFeeLib` — sets the fee; a bug here could under-charge takers
    (donating LP value to arbitrageurs) or over-charge (blocking legitimate
    trades).
-4. `SpryHook` — the gateway through which `SmartFeeLib`'s output reaches the
-   `PoolManager`. A bug here could likewise mis-set the fee or block swaps.
+3. `SpryHook` — the gateway through which `SmartFeeLib`'s output reaches
+   the `PoolManager`. It also owns the per-pool cumulative-window state
+   and the 5-tier parameter registry. A bug here could mis-set the fee,
+   corrupt the cumulative, or block swaps.
 
-The components we depend on but do not ship are `PoolManager` and the v4-core
-libraries it uses internally; the audit-and-deployment story for those is
-Uniswap Labs' responsibility, not ours.
+The components we depend on but do not ship are `PoolManager`, the
+v4-core libraries, and `PositionManager` from `v4-periphery`; the
+audit-and-deployment story for those is Uniswap Labs' responsibility,
+not ours.
 
 ---
 
@@ -537,19 +698,21 @@ A pool that wants Spry pricing must be initialised with
 PoolKey({
     currency0: ...,
     currency1: ...,
-    fee:         LPFeeLibrary.DYNAMIC_FEE_FLAG,   // 0x800000
-    tickSpacing: ...,
+    fee:         LPFeeLibrary.DYNAMIC_FEE_FLAG,   // 0x800000 (sentinel, NOT used for tier)
+    tickSpacing: <one of 1 / 10 / 60 / 200 / 1000>,
     hooks:       IHooks(spryHookAddress)
 })
 ```
 
 `DYNAMIC_FEE_FLAG` is the signal to `PoolManager` that the pool's fee is
-hook-supplied. Without it, `PoolManager` will ignore the fee returned by
-`beforeSwap` and apply whatever static fee was set instead. The `SpryRouter`
-does **not** set this flag automatically — pool creation is the operator's
-responsibility — but the deploy script includes a worked example for the
-common case (a Spry pool over a single $\langle \mathrm{currency}_0,
-\mathrm{currency}_1\rangle$ pair).
+hook-supplied; V4's `LPFeeLibrary.isDynamicFee` uses *exact* equality on
+the flag, so the lower bits of `key.fee` cannot also be repurposed to
+encode the tier index. Instead the tier is encoded in `tickSpacing`: the
+first call to `beforeSwap` reads `key.tickSpacing` and looks it up in
+`_tierFromTickSpacing`, reverting with `InvalidTier` if it is not one of
+the five sanctioned values $\{1, 10, 60, 200, 1000\}$. Pool creation is
+the operator's responsibility — `SpryRouter` does not initialise pools
+— but the deploy script includes a worked example for each tier.
 
 ### 5.3 Virtual reserves
 
@@ -576,46 +739,57 @@ $(R_0, R_1)$ when liquidity is uniform across the full range.
 V4's `Lock` library uses transient storage (EIP-1153) [9] to enforce
 one-active-`unlock` at the `PoolManager` level. Once `unlock` is in flight,
 any nested `unlock` call reverts. Spry's contracts inherit this property:
-`SpryHook.beforeSwap` is `view` and never opens an `unlock`, and
-`SpryRouter.unlockCallback` is the only state-changing entry point under the
-manager's lock.
+`SpryHook.beforeSwap` writes only the per-pool cumulative window and never
+opens an `unlock`, and `SpryRouter.unlockCallback` is the only state-
+changing entry point under the manager's lock.
 
-### 5.5 Settlement (native ETH, fee-on-transfer tokens, refunds)
+### 5.5 Settlement (native ETH, fee-on-transfer tokens, refunds, Permit2)
 
-The router's `_settle` helper branches on the currency:
+The router's `_settle` helper branches on the currency and on the optional
+Permit2 transfer mode:
 
 ```solidity
-function _settle(Currency currency, address payer, uint256 amount) internal {
+function _settle(
+    Currency currency,
+    address payer,
+    uint256 amount,
+    bool usePermit2
+) internal {
     if (amount == 0) return;
     POOL_MANAGER.sync(currency);
     if (Currency.unwrap(currency) == address(0)) {
+        if (usePermit2) revert Permit2NativeUnsupported();
         POOL_MANAGER.settle{value: amount}();           // native ETH
     } else {
         address token = Currency.unwrap(currency);
-        if (payer == address(this)) {
-            token.safeTransfer(address(POOL_MANAGER), amount);     // self-pay
+        if (usePermit2) {
+            PERMIT2.transferFrom(payer, address(POOL_MANAGER), uint160(amount), token);
         } else {
-            token.safeTransferFrom(payer, address(POOL_MANAGER), amount);
+            ERC20(token).safeTransferFrom(payer, address(POOL_MANAGER), amount);
         }
         POOL_MANAGER.settle();
     }
 }
 ```
 
-`SafeTransfer.safeTransfer{From}` is the standard pattern for ERC-20
-tolerance: low-level `.call`, success bit, and "`returnData.length == 0` ||
-`abi.decode(returnData, (bool))`" — covering both standard tokens and
-USDT-style tokens that return no data. ETH refunds for unspent `msg.value`
-happen at the outer router function (`swapExactOutputSingle`, `addLiquidity`,
-etc.).
+The router uses solmate's `SafeTransferLib` for ERC-20 tolerance: low-level
+`.call`, success bit, and a `returnData.length == 0` || `abi.decode(...,
+(bool))` fallback that covers both standard tokens and USDT-style tokens
+that return no data. ETH refunds for unspent `msg.value` happen at the
+outer router entry point (`swapExactInputSingle`, `swapExactOutputSingle`,
+etc.) against a balance snapshot taken on entry; the multicall caveat in
+`SpryRouter`'s NatSpec applies: a multicall whose inner calls do not
+themselves consume ETH must not be passed `msg.value`.
 
 ### 5.6 Pool isolation
 
-Because pools are keyed by the hash of the entire `PoolKey` struct, two pools
-sharing the same currency pair but differing in `fee`, `tickSpacing`, or
-`hooks` are distinct pools with disjoint state. ERC-6909 LP shares are
-likewise keyed by `poolId`, so a holder of shares in one pool cannot redeem
-them against another. The invariant suite (Section 9) verifies this directly.
+Because pools are keyed by the hash of the entire `PoolKey` struct, two
+pools sharing the same currency pair but differing in `fee`, `tickSpacing`,
+or `hooks` are distinct pools with disjoint state. The hook's per-pool
+cumulative window state is keyed by `PoolId`, so swaps on one pool cannot
+shift the cumulative on another (verified end-to-end by
+`testCumulativeIsPerPool` and the `CrossPoolIsolation` scenarios). The
+invariant suite (Section 9) cross-checks the V4-level state.
 
 ### 5.7 Protocol fee posture
 
@@ -681,67 +855,48 @@ Spry hop pays for one `beforeSwap` call (≈ 10 k gas in safe/alert zones,
 
 ## 7. Liquidity management
 
-### 7.1 Full-range positions only
+### 7.1 Liquidity provision via the canonical PositionManager
 
-Spry exposes V2-style entry points on the router:
+Spry's router is **swap-only**: it does not mint, burn, or transfer LP
+positions, and it holds no LP shares at rest. Liquidity provision goes
+entirely through Uniswap's canonical V4 `PositionManager`
+(`v4-periphery`), against the same `PoolManager` Spry's hook is wired to.
 
-```solidity
-function addLiquidity(
-    PoolKey calldata key,
-    uint256 amount0Desired,
-    uint256 amount1Desired,
-    uint256 amount0Min,
-    uint256 amount1Min,
-    address recipient,
-    uint256 deadline
-) external payable returns (uint128 liquidity, uint256 amount0, uint256 amount1);
-```
-
-Internally the router (inside its `unlockCallback`) converts the desired
-amounts into a V4 liquidity value via `LiquidityAmounts.getLiquidityForAmounts`
-at the bounds `tickLower = TickMath.minUsableTick(key.tickSpacing)` and
-`tickUpper = TickMath.maxUsableTick(key.tickSpacing)`. The resulting V4
-position is identified by
+Each LP is identified by an **ERC-721 token id**, minted by the
+PositionManager when the position opens. V4 keys per-position fee
+accounting by
 
 $$
-\mathrm{positionId} = \mathrm{keccak256}\bigl(\mathrm{routerAddress}, \mathrm{MIN\_USABLE\_TICK}, \mathrm{MAX\_USABLE\_TICK}, \mathrm{salt}=0\bigr)
+\mathrm{positionKey} = \mathrm{keccak256}\bigl(\mathrm{positionManagerAddress},\, \mathrm{tickLower},\, \mathrm{tickUpper},\, \mathrm{salt}\bigr)
 $$
 
-so the router holds **exactly one** position per Spry pool. Every $1$ wei of
-that position's liquidity backs exactly $1$ wei of ERC-6909 LP shares in the
-router's `ModifiedERC6909` ledger.
+with `salt = bytes32(tokenId)` set by PositionManager. The result: every
+LP has a strictly separate fee accumulator, so a drive-by `add → remove`
+attacker cannot drain the fees that accrued on someone else's position.
 
-This 1:1 correspondence is the strongest invariant the protocol exposes (see
-Section 9): the total LP shares issued must equal the position's V4 liquidity,
-to the wei, across every sequence of `add`s and `remove`s by every actor.
-Section 9 confirms this empirically across 128 000 random handler operations.
+The interop is tested end-to-end by
+`test/integration/PositionManagerInteropTest.t.sol`: Alice mints a
+position through `PositionManager`, Carol swaps through `SpryRouter`
+(accruing fees against Alice's position via V4's per-`positionKey`
+`feeGrowthInside`), and Alice's subsequent `DECREASE_LIQUIDITY` returns
+strictly more than she put in.
 
-### 7.2 Removing liquidity
+### 7.2 Full-range positions
 
-```solidity
-function removeLiquidity(
-    PoolKey calldata key,
-    uint128 liquidity,
-    uint256 amount0Min,
-    uint256 amount1Min,
-    address recipient,
-    uint256 deadline
-) external returns (uint256 amount0, uint256 amount1);
-```
-
-The router burns the caller's shares (via `ModifiedERC6909._burn`), then
-inside the `unlockCallback` decreases the V4 position by the same amount and
-takes the proportional `amount0`/`amount1` (or native ETH) to `recipient`.
-Slippage is enforced against the realised amounts.
+Spry's economic model assumes uniform liquidity across the entire price
+range — the constant-product reduction the SmartFee derivation operates
+on. The recommended position bounds are therefore
+`tickLower = TickMath.minUsableTick(tickSpacing)` and
+`tickUpper = TickMath.maxUsableTick(tickSpacing)`. PositionManager will
+mint concentrated positions too, but the dynamic-fee curve makes no
+guarantees about IL compensation for concentrated ranges in v1.
 
 ### 7.3 LP share transferability
 
-LP shares are standard per-id ERC-6909 tokens. Holders can `transfer`,
-`approve` per token id, and `transferFrom`, including the infinite-allowance
-shortcut. Transferred shares remain redeemable via `router.removeLiquidity`
-by whoever holds them at the time of the call — there is no holding-period or
-identity restriction. The recipient of a transfer takes the same pro-rata
-claim on the underlying full-range position.
+Because the LP token is a standard ERC-721 minted by PositionManager,
+LP positions transfer the same way every other Uniswap V4 position
+transfers — `safeTransferFrom`, `approve`, set-approval-for-all,
+on-chain marketplaces, etc. No Spry-specific token contract is involved.
 
 ---
 
@@ -769,24 +924,32 @@ is what the protocol intends.
 
 | Component | Surface | Mitigation |
 |---|---|---|
-| `SpryHook.beforeSwap` | Called by `PoolManager` on every swap of every Spry pool. If it reverts, the swap reverts. | Body is `view`, reads two storage slots, calls a `pure` library. No state mutation, no external calls, no token movement. |
+| `SpryHook.beforeSwap` | Called by `PoolManager` on every swap of every Spry pool. If it reverts, the swap reverts. | Body reads two storage slots, writes one (the per-pool cumulative window), calls library `pure` functions. No external calls, no token movement. |
+| Per-pool cumulative state | One storage slot per Spry pool (`PoolWindow { uint64 windowStart; int128 signedCum; }`), written on every swap. | `signedCum` is saturated to `int128` bounds defensively; realistic in-window magnitudes are ≤ ~50 000 (six orders of magnitude below the saturation threshold). Window resets lazily on the first swap of a new block. |
 | `SpryHook` no-op entry points | Defined for `IHooks` completeness, but the manager will never call them because the address-encoded permissions do not flag them. | Every entry point is guarded by an `onlyPoolManager` modifier in case of unexpected delegate-call patterns. Directly tested with `vm.prank(address(0xdead))`. |
 | `SpryRouter.unlockCallback` | Called by `PoolManager` during `unlock`. Could receive payloads from `unlock`s the router itself didn't initiate. | `onlyPoolManager` guard + tagged-union dispatch where every tag is exhaustively handled and unknown tags revert with `InvalidCallbackKind`. |
 | Hook address mining | An adversary who controls the deploy could deploy a malicious hook at a Spry-looking address. | Hook bytecode is deterministic given the constructor args (`PoolManager` address); reproducible builds + on-chain Etherscan verification close this loop. |
-| LP-share token | Standard ERC-6909, tradable. | Burn-side gated on holder balance; transfers route through the same library that the direct-mock unit suite hits. |
 
 ### 8.3 Known economic concerns
 
-**Dynamic-fee sandwich window.** The fee charged for a swap is determined by
-the swap's own delta, which depends on the pool state at the moment of
-execution. An MEV bot can artificially raise the delta tier by front-running
-with a price-shifting trade, observe the victim's higher fee, and back-run
-to recover capital. Because the excess fee accrues to LPs rather than to the
-attacker, the attack does not extract value from LPs — it extracts value
-from the victim taker. The mitigation is the standard one (use a low-slippage
-router with a tight `amountOutMin`), but it is not eliminated. We consider
-this a property of dynamic-fee mechanisms in general, not a specific Spry
-bug.
+**Dynamic-fee front-running window.** The fee charged for a swap is
+determined by the running cumulative *and* the swap's own delta — both of
+which depend on the pool state at the moment of execution. An MEV bot can
+front-run the victim with a price-shifting trade to push the cumulative
+deeper, observe the victim's higher fee, and back-run to recover capital.
+Because the excess fee accrues to LPs rather than to the attacker, the
+attack does not extract value from LPs — it extracts value from the victim
+taker. Integral mode makes this strictly *more* expensive for the
+attacker than the v0 end-rate design (the front-run + back-run pair must
+itself pay the integral over its own trajectory), but does not eliminate
+it. The mitigation is the standard one (use a low-slippage router with a
+tight `amountOutMin`).
+
+**Multi-block patient MEV.** `BLOCK_WINDOW = 1` means the cumulative
+resets across blocks; an attacker who can afford to wait one block
+between legs pays normal fees. The protection scope is deliberately
+limited to atomic-within-a-block attacks (multicall, Flashbots bundle).
+Multi-block windows are an open design item.
 
 **Hook gas cost.** Each swap pays for one `beforeSwap` call. The integer
 zones (safe / alert) run in approximately 10 000 gas; the danger-zone
@@ -806,90 +969,113 @@ pre-deploy checklist.
 
 ## 9. Testing methodology
 
-The repository ships with **123 tests across 15 suites**, all passing under
-the same Foundry profile that `forge coverage` uses (no `via_ir`,
-optimizer off) so coverage measurements are accurate. The suites are listed
-in the project README.
+The repository ships with **224 tests across 38 suites**, all passing
+under the same Foundry profile that `forge coverage` uses (no `via_ir`,
+optimizer off) so coverage measurements are accurate. The suites are
+grouped under `test/unit/`, `test/integration/`, `test/scenarios/`,
+`test/fuzz/`, and `test/fork/`.
 
 ### 9.1 Unit coverage of the algorithm
 
-`SmartFeeLibTest.t.sol` (19 tests) exercises every fee zone, both directions,
-both exact-in and exact-out paths, the safe-zone base case, the fallback cap,
-and the extreme-reserve-ratio robustness case. A property-based fuzz test
-runs 256 random inputs over the full reserve range and asserts the returned
-fee never exceeds 55 000 pips.
+`SmartFeeLibTest.t.sol` (25 tests) exercises every fee zone, both
+directions, both exact-in and exact-out paths, the safe-zone base case,
+the fallback cap, the extreme-reserve-ratio robustness case, and
+boundary continuity at every safe ↔ alert ↔ danger seam. A property-
+based fuzz test runs 256 random inputs over the full reserve range and
+asserts the returned fee never exceeds 55 000 pips.
 
-`SpryHookZonesTest.t.sol` (10 tests) re-runs the same zone coverage through
-`SpryHook.beforeSwap` (impersonating `PoolManager`) so the SmartFeeLib lines
-are exercised from the hook's inlined call site, not just through the
-standalone library harness. This is what closes the inlining gap that
-forge-coverage's per-deployment counter would otherwise report.
+`MarginalFeeTest.t.sol` (28 tests) pins the integral-mode math: each
+behavioral case (Growth / Unwind / Flip), each per-zone integral
+(safe / alert / danger / cap), boundary stitching across zones, and
+three property-based fuzz tests covering path-independence within the
+theoretical $2 \cdot |I| + 3 \cdot N$ truncation bound.
 
-`SpryHookCoverageTest.t.sol` (10 tests) exercises the eight no-op `IHooks`
-entry points — `beforeInitialize`, `afterInitialize`, `beforeAddLiquidity`,
-`afterAddLiquidity`, `beforeRemoveLiquidity`, `afterRemoveLiquidity`,
-`afterSwap`, `beforeDonate`, `afterDonate` — calling each as `PoolManager`
-and asserting the right selector is returned, then calling each from a
-non-`PoolManager` address and asserting `NotPoolManager`.
+`AllTiersMarginalFeeTest.t.sol` (6 tests) re-runs the integral-mode
+sanity checks against the OTHER four tier parameter sets, so any drift
+between the hook's tier registry and what SmartFeeLib consumes surfaces
+immediately.
+
+`SpryHookZonesTest.t.sol` (10 tests) re-runs the zone coverage through
+`SpryHook.beforeSwap` (impersonating `PoolManager`) so the SmartFeeLib
+lines are exercised from the hook's inlined call site, not just through
+the standalone library harness. `SpryHookCoverageTest.t.sol` (11 tests)
+covers the no-op `IHooks` entry points: each is called once as
+`PoolManager` (right selector returned) and once from a non-`PoolManager`
+address (`NotPoolManager` revert).
+
+`HookMinerTest.t.sol` (5 tests) covers CREATE2 salt mining and the bit-
+flag verification used by every test's `setUp`.
 
 ### 9.2 Integration coverage
 
-`SpryHookTest`, `SpryRouterSingleTest`, `SpryRouterMultiTest`,
-`SpryRouterLiquidityTest`, `SpryRouterBranchTest`, `SpryRouterERC6909Test`,
-and `ParityTest` cover end-to-end flows against a locally deployed
-`PoolManager`: single-hop and multi-hop swaps in both directions, slippage,
-deadlines, native ETH on the input and on the output side, `addLiquidity` +
-`removeLiquidity` round-trip, ERC-6909 transfer between LPs, the
-`PoolManager`'s own nested-`unlock` lock, and the router's invalid-callback
-revert path.
+Twelve suites cover end-to-end flows against a locally deployed
+`PoolManager`: single-hop and multi-hop swap shapes
+(`SpryRouterSingleTest`, `SpryRouterMultiTest`, `SpryRouterBranchTest`,
+`SwapShapeMatrixTest`), V4 hook surface (`SpryHookTest`,
+`HookDataForwardingTest`), Permit / Permit2 / multicall (`PermitSupportTest`,
+`Permit2SupportTest`), Quoter integration (`QuoterTest`), tier-from-
+tickSpacing dispatch (`TierDispatchTest`), native ETH + multi-pool
+isolation (`ParityTest`), and the PositionManager interop smoke test
+(`PositionManagerInteropTest`).
 
-`ERC6909Test`, `HookMinerTest`, and `SafeTransferTest` cover the standalone
-library primitives in isolation: per-id allowances, ERC-6909 transfer math,
-CREATE2 salt mining, and the full quartet of ERC-20 quirks
-(standard / USDT-style / false-return / reverting / ETH-rejecter receiver).
+### 9.3 Scenario coverage
 
-### 9.3 Invariant fuzz campaign
+Seventeen scenario suites simulate adversarial flows or asset shapes
+the hook is supposed to neutralise. The most load-bearing ones:
 
-`Invariants.t.sol` runs 256 invariant rounds × 500 random handler calls per
-round = **128 000 random operations**, picking from three actors and three
-operations (`swapExactIn`, `addLiquidity`, `removeLiquidity`) with bounded
-magnitudes. The handler swallows `revert`s so the campaign keeps moving even
-when a random call would normally fail. Across the run the following
-invariants hold without exception (0 violations recorded over the campaign):
+| Suite | What it pins |
+|---|---|
+| `IntegralPathIndependence.t.sol` | Same-block splitter receives strictly less output (paid more fee) than one big swap of the same total amount, once the trajectory crosses safeHigh. Finer splits cost more than coarser splits. Multi-block splits incur no penalty (the window reset works). |
+| `CumulativeFeeBehavior.t.sol` | Each of the three dispatch cases — Growth / Unwind / Flip — observed end-to-end through V4 swaps. Window reset + multi-pool isolation. |
+| `SandwichAttack.t.sol` | Sandwich attacker's second leg pays a higher fee because the first leg already pushed the pool's cumulative. |
+| `FeeAccrualBenefit.t.sol` | An honest LP earns fees on their own position. A drive-by `add → remove` attacker cannot drain fees that accrued on someone else's position (per-owner V4 position salt). |
+| `JITLiquidity.t.sol` | A just-in-time LP cannot harvest fees that accrued before they joined. |
+| `AsymmetricDecimals.t.sol` | Smart fee math is well-defined at extreme reserve ratios (12 orders of magnitude, e.g. USDC at 6 decimals vs WETH at 18). |
+| `RecipientIsSelf.t.sol`, `EntryAmountAndPathGuards.t.sol`, `ETHRefundDrain.t.sol`, `DonationAndStuckTokens.t.sol`, `ReentrancyAttempt.t.sol`, `GasGriefToken.t.sol`, `HookFlagsManipulation.t.sol`, `DoSResistance.t.sol`, `FirstMintInflation.t.sol`, `DeepMultiHop.t.sol`, `CrossPoolIsolation.t.sol` | Router-layer input guards and adversarial-token-shape resistance. |
+
+### 9.4 Invariant fuzz campaign
+
+`Invariants.t.sol` runs 256 invariant rounds × 500 random handler calls
+per round = **128 000 random operations**, picking from three actors and
+three operations (`swapExactIn`, `addLiquidity`, `removeLiquidity`) with
+bounded magnitudes. The handler swallows `revert`s so the campaign keeps
+moving even when a random call would normally fail. Across the run the
+following invariants hold without exception (0 violations recorded over
+the campaign):
 
 | Invariant | What it proves |
 |---|---|
-| **`lpSharesMatchPositionLiquidity`** | `router.totalSupply(poolId)` $\equiv$ V4 in-range `liquidity(routerAddress, MIN\_TICK, MAX\_TICK, 0)`. The router's ERC-6909 ledger is the canonical record of position ownership; this invariant says the ledger is never out-of-sync with the underlying V4 position by even one wei. |
-| **`sharesAccountForFullSupply`** | $\sum_{\text{actors}} \mathrm{balanceOf}(\mathrm{poolId}, \mathrm{actor}) \equiv \mathrm{totalSupply}(\mathrm{poolId})$. Proves no shares are lost or duplicated by transfers, mints, or burns. |
-| **`poolLiquidityEqualsRouterShares`** | The pool's in-range liquidity reported by `StateLibrary` equals the router's total supply. Cross-checks the previous invariant from the manager's side. |
+| **`poolLiquidityEqualsSumOfPositions`** | The pool's in-range liquidity reported by `StateLibrary` equals the sum of every actor's per-owner V4 position (seeder + Alice + Bob + Carol). The per-owner-salt LP model is never out of sync with the manager's view by even one wei. |
 | **`managerSolventWhileLiquidityLives`** | While the pool has any liquidity, the `PoolManager` holds non-zero balances of both currencies. Catches drain paths. |
 
-Additionally, the in-handler `swap` operation asserts $K_{\text{after}} \ge
-K_{\text{before}}$ on the virtual constant $K = L^2$, so 42 000 random swaps
-did not produce a single case of $K$ decreasing across a swap.
+Additionally, the in-handler `swap` operation asserts $K_{\text{after}}
+\ge K_{\text{before}}$ on the virtual constant $K = L^2$, so 42 000
+random swaps did not produce a single case of $K$ decreasing across a
+swap.
 
-### 9.4 Fork testing
+### 9.5 Fork testing
 
-`ForkTest.t.sol` runs the full stack against the canonical V4 `PoolManager`
-on whichever chain the environment variables `FORK_RPC_URL` and
-`V4_POOL_MANAGER` point to. When the env vars are unset the tests skip
-cleanly, so default `forge test` runs remain green offline. The fork suite
-verifies (a) the mined hook address has the right permission bits on the
-target chain's actual `PoolManager`, (b) a single-hop swap against the live
-manager succeeds end-to-end, and (c) `StateLibrary` reads work against the
-live deployment.
+`ForkTest.t.sol` and `ForkSwapShapesTest.t.sol` (7 tests total) run the
+full stack against the canonical V4 `PoolManager` on whichever chain the
+environment variable `FORK_RPC_URL` points to. When unset the tests skip
+cleanly, so default `forge test` runs remain green offline. The fork
+suites verify (a) the mined hook address has the right permission bits
+on the target chain's actual `PoolManager`, (b) single-hop and multi-hop
+swaps against the live manager succeed end-to-end, (c) `StateLibrary`
+reads work against the live deployment, and (d) native-ETH round trip
+plus exact-output swap shapes function as expected.
 
-### 9.5 Coverage targets
+### 9.6 Coverage targets
 
-The library-level coverage report under `forge coverage` shows 100 % lines,
-branches, and functions on `SmartFeeLib`, `ModifiedERC6909`, and
-`VirtualReserves`; near-100 % on `HookMiner` and `SafeTransfer`; and apparent
-50 % on `SpryHook` and `SpryRouter`. The 50 % figures are an artefact of
-forge-coverage's per-deployment aggregation: each test contract that deploys
-its own hook / router instance contributes its own coverage trace, and lcov
-reports the *intersection* across instances. The behavioural coverage (every
-public method called, every branch executed by *at least one* test
-deployment) is in fact at parity with the libraries.
+The library-level coverage report under `forge coverage` shows 100 %
+lines, branches, and functions on `SmartFeeLib`, `SpryFeeTypes`, and
+`VirtualReserves`; near-100 % on `HookMiner`. The headline figures for
+`SpryHook` and `SpryRouter` are subject to forge-coverage's per-
+deployment aggregation artefact (each test contract that deploys its
+own hook / router instance contributes its own coverage trace, and lcov
+reports the *intersection* across instances). Behavioural coverage —
+every public method called, every branch executed by *at least one*
+test deployment — is at parity with the libraries.
 
 ---
 
@@ -921,22 +1107,25 @@ material user funds:
 ## 11. Conclusion
 
 Spry mitigates impermanent loss not by removing it (which would require an
-external price oracle and a re-staking insurance pool, neither of which exist
-permissionlessly on every chain) but by **pricing it correctly through the
-fee**. Small swaps that produce little IL pay the V2-default fee. Large
-swaps that move price meaningfully pay a fee scaled to the IL they're about
-to inflict. The integral over time of the excess fees accrues to LPs through
-V4's standard fee channel, exactly matching the IL profile we derived in
-section 2.
+external price oracle and a re-staking insurance pool, neither of which
+exist permissionlessly on every chain) but by **pricing it correctly
+through the fee**. Small swaps that produce little IL pay the tier's
+base rate. Large swaps that move the price meaningfully pay a fee scaled
+to the IL they're about to inflict, integrated over the cumulative
+trajectory the same block has already traversed so a splitter cannot
+arbitrage the curve sub-block. The excess accrues to LPs through V4's
+standard fee channel.
 
-By delivering this mechanism as a Uniswap V4 hook rather than a stand-alone
-AMM, Spry avoids re-implementing — and re-auditing — pool storage, swap
-math, position accounting, multi-pool isolation, native-ETH handling,
-flash-accounting multi-hop, and ERC-6909 claim tokens. The Spry surface is
-~700 lines of Solidity; the V4 surface we inherit is approximately 10×
-larger and already audited at scale. This reduction in attack surface,
-combined with the empirical guarantees in section 9, leaves Spry in a strong
-position for an external audit to bring it to mainnet readiness.
+By delivering this mechanism as a Uniswap V4 hook rather than a stand-
+alone AMM, Spry avoids re-implementing — and re-auditing — pool storage,
+swap math, position accounting (canonical ERC-721 positions via
+`PositionManager`), multi-pool isolation, native-ETH handling, flash-
+accounting multi-hop, and ERC-6909 claim tokens. The Spry surface is
+under 1 000 lines of Solidity; the V4 surface we inherit is approximately
+10× larger and already audited at scale. This reduction in attack
+surface, combined with the empirical guarantees in section 9, leaves
+Spry in a strong position for an external audit to bring it to mainnet
+readiness.
 
 The pre-audit work outlined in section 10 is necessary before any
 significant value is exposed. Once that work is complete, Spry can be
