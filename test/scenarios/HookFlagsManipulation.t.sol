@@ -37,7 +37,7 @@ contract HookFlagsManipulation is Test {
         // Deploy SpryHook the "wrong" way: regular `new` instead of CREATE2
         // with a mined salt. The resulting address has random low bits and
         // almost certainly does NOT satisfy BEFORE_SWAP_FLAG.
-        SpryHook badHook = new SpryHook(manager);
+        SpryHook badHook = new SpryHook(manager, uint64(1));
 
         // Confirm the address really doesn't match.
         uint160 expected = Hooks.BEFORE_SWAP_FLAG;
@@ -66,9 +66,9 @@ contract HookFlagsManipulation is Test {
             address(this),
             Hooks.BEFORE_SWAP_FLAG,
             type(SpryHook).creationCode,
-            abi.encode(manager)
+            abi.encode(manager, uint64(1))
         );
-        SpryHook hookA = new SpryHook{salt: saltA}(manager);
+        SpryHook hookA = new SpryHook{salt: saltA}(manager, uint64(1));
         assertEq(address(hookA), addrA);
         assertEq(uint160(address(hookA)) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_SWAP_FLAG);
 
@@ -79,7 +79,7 @@ contract HookFlagsManipulation is Test {
             address(0xC0FFEE),
             Hooks.BEFORE_SWAP_FLAG,
             type(SpryHook).creationCode,
-            abi.encode(manager)
+            abi.encode(manager, uint64(1))
         );
         assertEq(uint160(addrB) & Hooks.ALL_HOOK_MASK, Hooks.BEFORE_SWAP_FLAG);
         assertTrue(addrA != addrB, "different deployers land on different addresses");

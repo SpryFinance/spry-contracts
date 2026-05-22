@@ -65,9 +65,9 @@ contract SpryRouterMultiTest is Test {
             address(this),
             Hooks.BEFORE_SWAP_FLAG,
             type(SpryHook).creationCode,
-            abi.encode(manager)
+            abi.encode(manager, uint64(1))
         );
-        hook = new SpryHook{salt: salt}(manager);
+        hook = new SpryHook{salt: salt}(manager, uint64(1));
         require(address(hook) == predicted);
 
         keyAB = _buildKey(tokenA, tokenB);

@@ -60,12 +60,29 @@ contract SpryHook is IHooks {
     uint8 public constant TIER_COUNT = 5;
 
     /// @notice Number of blocks a pool's cumulative-delta window covers.
-    ///         At each new block (relative to a pool's `windowStart`), the
-    ///         pool's `signedCum` resets to zero. A one-block window catches
-    ///         multicall + Flashbots-bundle splitting attacks (which are
-    ///         atomic-within-a-block by definition) without imposing
-    ///         multi-block tracking overhead.
-    uint64 public constant BLOCK_WINDOW = 1;
+    ///         Set at deployment time per chain because block-time differs
+    ///         by an order of magnitude across the chains Uniswap V4 targets;
+    ///         a single bake-in would either over-protect slow chains or
+    ///         under-protect fast ones. Recommended values:
+    ///
+    ///             Ethereum mainnet  (12 s blocks)  → 1
+    ///             Base              ( 2 s blocks)  → 6
+    ///             Arbitrum One      (~250 ms)      → 48
+    ///             Optimism          ( 2 s blocks)  → 6
+    ///             Polygon PoS       (~2 s blocks)  → 6
+    ///
+    ///         The window covers the time horizon over which a multicall or
+    ///         Flashbots-style bundle can be sliced; on faster chains the
+    ///         same wall-clock attack window spans more blocks, so the
+    ///         BLOCK_WINDOW grows correspondingly. At each new block past
+    ///         `windowStart + BLOCK_WINDOW` the pool's `signedCum` resets
+    ///         to zero on the next swap.
+    uint64 public immutable BLOCK_WINDOW;
+
+    /// @notice Thrown when the constructor is passed `BLOCK_WINDOW = 0`,
+    ///         which would degenerate the cumulative tracker into a no-op
+    ///         (every swap would observe a fresh-window reset).
+    error ZeroBlockWindow();
 
     /// @notice Per-pool cumulative-delta state. `signedCum` is the running
     ///         sum of per-swap signed deltas within the active window; the
@@ -79,8 +96,14 @@ contract SpryHook is IHooks {
 
     IPoolManager public immutable POOL_MANAGER;
 
-    constructor(IPoolManager _poolManager) {
+    /// @param _poolManager  V4 PoolManager this hook routes to.
+    /// @param _blockWindow  Number of blocks a pool's cumulative window
+    ///                      covers (chain-specific; see the constant's
+    ///                      NatSpec for the recommended per-chain values).
+    constructor(IPoolManager _poolManager, uint64 _blockWindow) {
+        if (_blockWindow == 0) revert ZeroBlockWindow();
         POOL_MANAGER = _poolManager;
+        BLOCK_WINDOW = _blockWindow;
     }
 
     modifier onlyPoolManager() {

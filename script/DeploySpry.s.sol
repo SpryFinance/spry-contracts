@@ -25,6 +25,12 @@ import {HookMiner} from "./HookMiner.sol";
 ///                                 call into it — it verifies the address
 ///                                 has bytecode so operators don't ship a
 ///                                 deployment that points users at a void.
+///           SPRY_BLOCK_WINDOW     number of blocks the per-pool cumulative
+///                                 window covers, chosen to span the same
+///                                 wall-clock attack horizon on every chain.
+///                                 No default: the operator MUST set this
+///                                 consciously. Recommended values per
+///                                 chain are documented on `SpryHook.BLOCK_WINDOW`.
 ///           PRIVATE_KEY           deployer key (forge --broadcast)
 ///         Optional environment:
 ///           V4_PERMIT2            address of Permit2 on the target chain.
@@ -33,9 +39,10 @@ import {HookMiner} from "./HookMiner.sol";
 ///                                 networks where Permit2 is deployed at a
 ///                                 non-canonical address.
 ///
-/// Example:
+/// Example (Ethereum mainnet):
 ///   V4_POOL_MANAGER=0x... \
 ///   V4_POSITION_MANAGER=0x... \
+///   SPRY_BLOCK_WINDOW=1 \
 ///     forge script script/DeploySpry.s.sol \
 ///       --rpc-url $RPC --broadcast --private-key $PRIVATE_KEY
 contract DeploySpry is Script {
@@ -50,11 +57,15 @@ contract DeploySpry is Script {
         address managerAddr     = vm.envAddress("V4_POOL_MANAGER");
         address positionMgrAddr = vm.envAddress("V4_POSITION_MANAGER");
         address permit2Addr     = vm.envOr("V4_PERMIT2", CANONICAL_PERMIT2);
+        uint64  blockWindow     = uint64(vm.envUint("SPRY_BLOCK_WINDOW"));
         IPoolManager manager    = IPoolManager(managerAddr);
+
+        require(blockWindow > 0, "Deploy: SPRY_BLOCK_WINDOW must be > 0");
 
         console.log("PoolManager:           ", managerAddr);
         console.log("PositionManager:       ", positionMgrAddr);
         console.log("Permit2:               ", permit2Addr);
+        console.log("BLOCK_WINDOW:          ", blockWindow);
 
         // Sanity-check that every external dependency the deployment depends
         // on actually has code at the supplied address. Catching this at
@@ -69,13 +80,13 @@ contract DeploySpry is Script {
             FORGE_CREATE2,
             Hooks.BEFORE_SWAP_FLAG,
             type(SpryHook).creationCode,
-            abi.encode(manager)
+            abi.encode(manager, blockWindow)
         );
         console.log("Predicted hook address:", predicted);
         console.logBytes32(salt);
 
         vm.startBroadcast();
-        hook = new SpryHook{salt: salt}(manager);
+        hook = new SpryHook{salt: salt}(manager, blockWindow);
         require(address(hook) == predicted, "Deploy: hook address mismatch");
         router = new SpryRouter(manager, IAllowanceTransfer(permit2Addr));
         vm.stopBroadcast();

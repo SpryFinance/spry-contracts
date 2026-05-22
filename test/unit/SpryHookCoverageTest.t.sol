@@ -35,9 +35,9 @@ contract SpryHookCoverageTest is Test {
             address(this),
             Hooks.BEFORE_SWAP_FLAG,
             type(SpryHook).creationCode,
-            abi.encode(manager)
+            abi.encode(manager, uint64(1))
         );
-        hook = new SpryHook{salt: salt}(manager);
+        hook = new SpryHook{salt: salt}(manager, uint64(1));
         require(address(hook) == predicted, "hook addr mismatch");
 
         ERC20Mock a = new ERC20Mock();
@@ -215,5 +215,27 @@ contract SpryHookCoverageTest is Test {
         hook.afterDonate(nonManager, key, 0, 0, "");
 
         vm.stopPrank();
+    }
+
+    // -----------------------------------------------------------------
+    // Constructor guard: BLOCK_WINDOW cannot be zero. A zero window
+    // would degenerate the cumulative tracker into a no-op because
+    // every swap would trip the `block.number >= windowStart + 0`
+    // condition and immediately reset.
+    // -----------------------------------------------------------------
+    function testConstructorRejectsZeroBlockWindow() public {
+        vm.expectRevert(SpryHook.ZeroBlockWindow.selector);
+        new SpryHook(manager, uint64(0));
+    }
+
+    function testConstructorAcceptsAndPersistsBlockWindow() public {
+        // Different chains pin different values; the immutable preserves
+        // whatever the deployer passed.
+        SpryHook h1 = new SpryHook(manager, uint64(1));
+        SpryHook h6 = new SpryHook(manager, uint64(6));
+        SpryHook h48 = new SpryHook(manager, uint64(48));
+        assertEq(h1.BLOCK_WINDOW(),  1);
+        assertEq(h6.BLOCK_WINDOW(),  6);
+        assertEq(h48.BLOCK_WINDOW(), 48);
     }
 }

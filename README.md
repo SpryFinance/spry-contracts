@@ -23,12 +23,16 @@ The economic mechanism is described in detail in
   **linear alert** ramp, an **exponential danger** ramp, and a flat
   **cap** beyond `dangerHigh`.
 - **Per-pool signed cumulative tracker** (one storage slot per pool)
-  that resets every block. Each swap's fee is computed against the
-  running cumulative, not the swap in isolation.
+  that resets every `BLOCK_WINDOW` blocks. The window length is a
+  per-chain `immutable` set at deployment so the same wall-clock
+  attack horizon (one multicall, one Flashbots-style bundle) is
+  covered on every chain (see SpryHook's NatSpec for the recommended
+  per-chain values). Each swap's fee is computed against the running
+  cumulative, not the swap in isolation.
 - **Integral-mode marginal fee**: the rate charged for a swap is the
   *average* of the underlying curve over the cumulative interval the
-  swap traverses. Splitting a same-direction swap into N pieces within
-  one block costs **at least as much** as one big swap — the
+  swap traverses. Splitting a same-direction swap into N pieces inside
+  one window costs **at least as much** as one big swap — the
   splitting-attack-resistance theorem is path-independence of the
   integral.
 - **Three-case dispatch** (Growth / Unwind / Flip): the unwind half of
@@ -117,7 +121,10 @@ produces accurate line numbers. Fork tests are auto-skipped unless
 1. **Deploy the hook**. The deployed address must have its low 14 bits
    match `Hooks.BEFORE_SWAP_FLAG`. Use `script/DeploySpry.s.sol`, which
    mines the CREATE2 salt against the canonical `PoolManager` address
-   for the target chain.
+   for the target chain. The operator must also set `SPRY_BLOCK_WINDOW`
+   to the chain-appropriate value (the `immutable` window length that
+   the cumulative tracker uses — see the comment on
+   `SpryHook.BLOCK_WINDOW` for recommended per-chain numbers).
 2. **Pick a tier**. Set `PoolKey.tickSpacing` to one of `{1, 10, 60,
    200, 1000}`; that picks the dispatched fee curve (STABLE / LIKE-
    ASSET / BLUE-CHIP / VOLATILE / EXOTIC). Spry rejects other

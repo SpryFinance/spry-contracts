@@ -492,9 +492,23 @@ is then evaluated against the (cumBefore, cumAfter) pair, not the
 isolated $\Delta$. After the fee is returned, `signedCum` is saturated
 to `int128` bounds and persisted.
 
-`BLOCK_WINDOW = 1`: a one-block window catches multicall and Flashbots-
-bundle splitting attacks (atomic-within-a-block by definition) without
-imposing multi-block tracking overhead.
+`BLOCK_WINDOW` is an `immutable` set at deployment time, not a baked-in
+constant. The same wall-clock attack horizon (one multicall, one
+Flashbots-style bundle) spans a different number of blocks on different
+chains because block-times differ by more than an order of magnitude;
+the deployer picks a per-chain value that covers that horizon:
+
+| Chain | Block time | Recommended `BLOCK_WINDOW` |
+|---|---|---|
+| Ethereum mainnet | ~12 s | 1 |
+| Base | ~2 s | 6 |
+| Arbitrum One | ~250 ms | 48 |
+| Optimism | ~2 s | 4 |
+| Polygon PoS | ~2 s | 4 |
+
+The constructor rejects `_blockWindow == 0` with `ZeroBlockWindow` —
+a zero window would degenerate the cumulative tracker into a no-op
+(every swap would observe a fresh window).
 
 ### 3.9 Integral-mode marginal fee
 
@@ -945,10 +959,14 @@ the difference between the victim's two fee rates. The attack is not
 eliminated; the mitigation is the standard one (use a low-slippage
 router with a tight `amountOutMin`).
 
-**Multi-block patient MEV.** `BLOCK_WINDOW = 1` means the cumulative
-resets across blocks; an attacker who can afford to wait one block
-between legs pays normal fees. The protection scope is deliberately
-limited to atomic-within-a-block attacks (multicall, Flashbots bundle).
+**Patient MEV beyond the window.** The cumulative resets after
+`BLOCK_WINDOW` blocks (a chain-specific immutable — see §3.8); an
+attacker who can afford to wait that many blocks between legs pays
+normal fees. The protection scope is deliberately limited to the
+atomic-within-window attack surface (multicall, Flashbots bundle, and
+on faster chains a few consecutive blocks). Longer-horizon strategies
+fall outside what dynamic-fee-via-cumulative can address without
+external price feeds.
 
 **Hook gas cost.** Each swap pays for one `beforeSwap` call. The integer
 zones (safe / alert) run in approximately 10 000 gas; the danger-zone
