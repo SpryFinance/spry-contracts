@@ -15,22 +15,17 @@ contract SmartFeeLibTest is Test {
     /// pinned; tests covering tiers 0/1/3/4 land in Commit 2.
     function _blueChip() internal pure returns (SpryFeeParams memory) {
         return SpryFeeParams({
-            safeLow:     -250,
-            safeHigh:     334,
-            alertLow:    -500,
-            alertHigh:   1000,
-            dangerLow:  -1000,
-            dangerHigh:  5000,
-            aLeft:   -68_000_000,
-            bLeft:   -14_000_000,
-            aRight:   25_370_000,
-            bRight:   -5_370_000,
-            aLeftExp:    8_000_000_000_000_000_000_000,
-            bLeftExp:   -1_832_581_463_748_310_200,
-            aRightExp:  15_905_414_575_341_013_000_000,
-            bRightExp:   229_072_682_968_538_780,
-            safeFee:  3_000,
-            capFee:  55_000
+            safeLow:     -250, safeHigh:    334,
+            alertLow:    -500, alertHigh:  1000,
+            dangerLow:  -1000, dangerHigh: 5000,
+            aLeft:   -68_000_000,  bLeft:   -14_000_000,
+            aRight:   25_525_525,  bRight:   -5_525_525,
+            aLeftExp:    8_000_000_001_237_896_396_800,
+            bLeftExp:    -1_832_581_463_748_310_272,
+            aRightExp:  15_905_414_575_956_300_922_880,
+            bRightExp:       229_072_682_968_538_784,
+            safeFee:   3_000,
+            capFee:   55_000
         });
     }
 
@@ -119,13 +114,13 @@ contract SmartFeeLibTest is Test {
 
     function testFeeRightAlertInteriorExactOut() public pure {
         // amount0Out=500, delta=+500 → right alert
-        // V4-pip-native:
-        //   _linear(25_370_000, -5_370_000, 500)
-        //   = (25_370_000 * 500 + 1000 * -5_370_000) / 1_000_000
-        //   = (12_685_000_000 - 5_370_000_000) / 1_000_000
-        //   = 7315
+        // V4-pip-native with precisely-derived coefficients:
+        //   _linear(25_525_525, -5_525_525, 500)
+        //   = (25_525_525 * 500 + 1000 * -5_525_525) / 1_000_000
+        //   = (12_762_762_500 - 5_525_525_000) / 1_000_000
+        //   = 7237
         uint24 fee = SmartFeeLib.getDynamicFee(SQRT_PRICE_1_TO_1, 1000, false, int256(500), _blueChip());
-        assertEq(fee, 7_315);
+        assertEq(fee, 7_237);
     }
 
     // ---------------------------------------------------------------------

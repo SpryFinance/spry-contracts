@@ -147,42 +147,110 @@ contract SpryHook is IHooks {
     // (0, 1, 3, 4) revert with `InvalidTier`; Commit 2 fills them in.
     // ---------------------------------------------------------------------
     function _tierParams(uint8 tier) internal pure returns (SpryFeeParams memory) {
+        if (tier == 0) return _tierStable();
+        if (tier == 1) return _tierLikeAsset();
         if (tier == 2) return _tierBlueChip();
-        // Tiers 0, 1, 3, 4 are populated in a follow-up commit.
+        if (tier == 3) return _tierVolatile();
+        if (tier == 4) return _tierExotic();
         revert InvalidTier();
     }
 
-    /// @dev Tier 2 — BLUE-CHIP. Matches the v0 SmartFee curve byte-for-byte
-    ///      after the V4-pip-native rescale:
-    ///        safe   : [-250, +334]   → 3000 pips (0.30%)
-    ///        alert  : ramp to 20_000 pips (2.00%) at -500 / +1000
-    ///        danger : ramp to 50_000 pips (5.00%) at -1000 / +5000
-    ///        cap    : 55_000 pips (5.50%) beyond
+    /// @dev All five tier coefficient sets are derived offline from the
+    ///      tier's boundary table (4 fee values × 6 zone bounds) by
+    ///      solving for C0 continuity at every safe<->alert<->danger
+    ///      transition. See `script/ComputeTierCoefficients.py` for the
+    ///      derivation (linear: 2-equation/2-unknown; exponential:
+    ///      log + exponential isolation). The constants below are baked
+    ///      into bytecode as immutables — no SLOADs at runtime.
+    ///
+    ///      The BLUE-CHIP (tier 2) `aRight`/`bRight` differ slightly
+    ///      from the v0 SmartFee values (25_370_000/-5_370_000) to give
+    ///      exact V4-pip-native continuity at the +334 safe→alert
+    ///      boundary, which the v0 code achieved only via integer
+    ///      truncation of an intermediate `feeBps` unit.
+
+    /// @dev Tier 0 — STABLE.  safe ±0.01% / alert→0.05% / danger→0.25% / cap 0.50%
+    function _tierStable() private pure returns (SpryFeeParams memory) {
+        return SpryFeeParams({
+            safeLow:     -500, safeHigh:     500,
+            alertLow:   -1000, alertHigh:   1500,
+            dangerLow:  -2000, dangerHigh:  5000,
+            aLeft:    -800_000,  bLeft:    -300_000,
+            aRight:    400_000,  bRight:   -100_000,
+            aLeftExp:    100_000_000_027_179_122_688,
+            bLeftExp:    -1_609_437_912_434_100_224,
+            aRightExp:   250_848_455_340_571_262_976,
+            bRightExp:       459_839_403_552_600_128,
+            safeFee:    100,    // 0.01%
+            capFee:    5_000    // 0.50%
+        });
+    }
+
+    /// @dev Tier 1 — LIKE-ASSET.  safe ±0.05% / alert→0.20% / danger→0.50% / cap 1.00%
+    function _tierLikeAsset() private pure returns (SpryFeeParams memory) {
+        return SpryFeeParams({
+            safeLow:     -350, safeHigh:     400,
+            alertLow:    -700, alertHigh:   1200,
+            dangerLow:  -1500, dangerHigh:  5000,
+            aLeft:    -4_285_710,  bLeft:    -999_997,
+            aRight:    1_875_000,  bRight:   -250_000,
+            aLeftExp:    897_082_713_697_571_307_520,
+            bLeftExp:    -1_145_363_414_842_693_888,
+            aRightExp:  1_497_492_754_575_049_359_360,
+            bRightExp:      241_129_139_966_882_912,
+            safeFee:     500,    // 0.05%
+            capFee:   10_000    // 1.00%
+        });
+    }
+
+    /// @dev Tier 2 — BLUE-CHIP.  safe ±0.30% / alert→2.00% / danger→5.00% / cap 5.50%
     function _tierBlueChip() private pure returns (SpryFeeParams memory) {
         return SpryFeeParams({
-            // Zone bounds (per-mille delta)
-            safeLow:     -250,
-            safeHigh:     334,
-            alertLow:    -500,
-            alertHigh:   1000,
-            dangerLow:  -1000,
-            dangerHigh:  5000,
+            safeLow:     -250, safeHigh:    334,
+            alertLow:    -500, alertHigh:  1000,
+            dangerLow:  -1000, dangerHigh: 5000,
+            aLeft:   -68_000_000,  bLeft:   -14_000_000,
+            aRight:   25_525_525,  bRight:   -5_525_525,
+            aLeftExp:    8_000_000_001_237_896_396_800,
+            bLeftExp:    -1_832_581_463_748_310_272,
+            aRightExp:  15_905_414_575_956_300_922_880,
+            bRightExp:       229_072_682_968_538_784,
+            safeFee:   3_000,   // 0.30%
+            capFee:   55_000    // 5.50%
+        });
+    }
 
-            // Linear-zone coefficients (V4-pip-native: × 1000 vs v0 values)
-            aLeft:   -68_000_000,
-            bLeft:   -14_000_000,
-            aRight:   25_370_000,
-            bRight:   -5_370_000,
+    /// @dev Tier 3 — VOLATILE.  safe ±0.50% / alert→3.00% / danger→7.50% / cap 9.00%
+    function _tierVolatile() private pure returns (SpryFeeParams memory) {
+        return SpryFeeParams({
+            safeLow:     -150, safeHigh:    200,
+            alertLow:    -350, alertHigh:   600,
+            dangerLow:   -700, dangerHigh: 5000,
+            aLeft:  -125_000_000,  bLeft:  -13_750_000,
+            aRight:   62_500_000,  bRight:  -7_500_000,
+            aLeftExp:   12_000_000_001_856_843_546_624,
+            bLeftExp:    -2_617_973_519_640_443_392,
+            aRightExp:  26_476_264_318_162_022_957_056,
+            bRightExp:       208_247_893_607_762_528,
+            safeFee:   5_000,   // 0.50%
+            capFee:   90_000    // 9.00%
+        });
+    }
 
-            // Exponential-zone coefficients (× 1000 vs v0 to output V4 pips)
-            aLeftExp:    8_000_000_000_000_000_000_000,  // 8.0e21
-            bLeftExp:   -1_832_581_463_748_310_200,      // -1.8325814637483102e18
-            aRightExp:  15_905_414_575_341_013_000_000,  // 15.905414575341013e21
-            bRightExp:   229_072_682_968_538_780,         // 0.22907268296853878e18
-
-            // Constant zones (V4 pips)
-            safeFee:  3_000,    // 0.30%
-            capFee:  55_000     // 5.50%
+    /// @dev Tier 4 — EXOTIC.  safe ±1.00% / alert→5.00% / danger→9.50% / cap 9.90%
+    function _tierExotic() private pure returns (SpryFeeParams memory) {
+        return SpryFeeParams({
+            safeLow:      -75, safeHigh:    100,
+            alertLow:    -200, alertHigh:   400,
+            dangerLow:   -500, dangerHigh: 5000,
+            aLeft:  -320_000_000,  bLeft:  -14_000_000,
+            aRight:  133_333_330,  bRight:  -3_333_332,
+            aLeftExp:   32_593_745_518_938_709_557_248,
+            bLeftExp:    -2_139_512_953_907_982_336,
+            aRightExp:  47_285_780_377_453_805_436_928,
+            bRightExp:       139_533_453_515_737_984,
+            safeFee:  10_000,   // 1.00%
+            capFee:   99_000    // 9.90%
         });
     }
 
