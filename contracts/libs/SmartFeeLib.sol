@@ -56,32 +56,47 @@ library SmartFeeLib {
         int256 amountSpecified,
         SpryFeeParams memory p
     ) internal pure returns (uint24 fee) {
-        (uint256 reserve0, uint256 reserve1) =
-            VirtualReserves.fromState(sqrtPriceX96, liquidity);
-
-        if (reserve0 == 0 || reserve1 == 0 || amountSpecified == 0) {
-            return uint24(p.safeFee);
-        }
-
-        // Translate V4 SwapParams into the (amount0Out, amount1Out) shape
-        // used by the delta formula below; exactly one of the two is non-zero.
-        (uint256 amount0Out, uint256 amount1Out) =
-            _outputAmounts(reserve0, reserve1, zeroForOne, amountSpecified);
-
-        int256 delta = _computeDelta(reserve0, reserve1, amount0Out, amount1Out);
+        int256 delta = computeSignedDelta(sqrtPriceX96, liquidity, zeroForOne, amountSpecified);
+        if (delta == 0) return uint24(p.safeFee);
         return uint24(_feeForDelta(delta, p));
     }
 
+    /// @notice Computes the signed per-mille reserve-shift indicator
+    ///         ("delta") for a swap, given pool state and swap params.
+    ///         Returned value:
+    ///           positive  if the swap takes token0 out of the pool
+    ///                     (price moves toward "more token0 needed")
+    ///           negative  if the swap takes token1 out of the pool
+    ///           0         if reserves or amount are zero
+    /// @dev Used by SpryHook to feed the per-pool cumulative tracker
+    ///      (the cumulative is the running sum of these signed deltas
+    ///      within a block window).
+    function computeSignedDelta(
+        uint160 sqrtPriceX96,
+        uint128 liquidity,
+        bool zeroForOne,
+        int256 amountSpecified
+    ) internal pure returns (int256) {
+        (uint256 reserve0, uint256 reserve1) =
+            VirtualReserves.fromState(sqrtPriceX96, liquidity);
+        if (reserve0 == 0 || reserve1 == 0 || amountSpecified == 0) {
+            return 0;
+        }
+        (uint256 amount0Out, uint256 amount1Out) =
+            _outputAmounts(reserve0, reserve1, zeroForOne, amountSpecified);
+        return _computeDelta(reserve0, reserve1, amount0Out, amount1Out);
+    }
+
     /// @notice Public-equivalent helper: given a delta value already computed
-    ///         externally, return the fee. Used by `_executeCumulative` paths
-    ///         where the delta is the cumulative window delta rather than a
-    ///         per-swap delta. Exposes the curve directly without re-deriving
-    ///         delta from a sqrt-price + amount.
+    ///         externally, return the fee. Used by SpryHook's cumulative
+    ///         path to evaluate the curve at the running cum value rather
+    ///         than at the per-swap delta.
     function feeForDelta(int256 delta, SpryFeeParams memory p)
         internal
         pure
         returns (uint24)
     {
+        if (delta == 0) return uint24(p.safeFee);
         return uint24(_feeForDelta(delta, p));
     }
 

@@ -64,6 +64,26 @@ contract SpryHook is IHooks {
     ///         `InvalidTier` from `beforeSwap`.
     uint8 public constant TIER_COUNT = 5;
 
+    /// @notice Number of blocks a pool's cumulative-delta window covers.
+    ///         At each new block (relative to a pool's `windowStart`), the
+    ///         pool's `signedCum` resets to zero. v1 ships with a one-block
+    ///         window — catches multicall + Flashbots-bundle splitting
+    ///         attacks (always one block by definition) without imposing
+    ///         multi-block tracking overhead. v1.5 can make this an
+    ///         immutable constructor argument to support multi-block
+    ///         windows on fast L2s.
+    uint64 public constant BLOCK_WINDOW = 1;
+
+    /// @notice Per-pool cumulative-delta state. `signedCum` is the running
+    ///         sum of per-swap signed deltas within the active window; the
+    ///         window resets when `block.number >= windowStart + BLOCK_WINDOW`.
+    ///         Fits in a single storage slot (64 + 128 = 192 bits + padding).
+    struct PoolWindow {
+        uint64  windowStart;
+        int128  signedCum;
+    }
+    mapping(PoolId => PoolWindow) internal _poolWindow;
+
     IPoolManager public immutable POOL_MANAGER;
 
     constructor(IPoolManager _poolManager) {
@@ -84,14 +104,40 @@ contract SpryHook is IHooks {
     }
 
     // ---------------------------------------------------------------------
-    // beforeSwap — the actual SmartFee plumbing
+    // beforeSwap — cumulative-aware tiered fee dispatch.
+    //
+    // Three cases keyed off how this swap shifts the pool's running
+    // signed cumulative delta:
+    //
+    //   GROWTH   |cumAfter| > |cumBefore|, same sign:
+    //              fee = curve_rate(cumAfter)
+    //              The swap pushes pool further from neutral; charge the
+    //              rate at the new (deeper) position on the curve.
+    //
+    //   UNWIND   |cumAfter| < |cumBefore|, same sign:
+    //              fee = safeFee
+    //              The swap brings the pool toward neutral; charge the
+    //              tier's base rate (LP still gets paid, no MEV penalty).
+    //
+    //   FLIP     sign(cumBefore) != sign(cumAfter), both non-zero:
+    //              fee = weighted average of safeFee (over the unwind half)
+    //                  and curve_rate(cumAfter) (over the growth half)
+    //
+    // Window reset: lazy on first hook entry of a new block window.
+    //
+    // Path-dependence note: with the current "end-rate" charging model,
+    // splitting a same-direction swap into N pieces costs LESS than one
+    // big swap (because each piece pays the rate at its smaller cum).
+    // The protection comes from each subsequent swap in the same window
+    // paying a HIGHER rate (the cum is now larger). v1.5 may upgrade
+    // to a path-independent integral-based rule.
     // ---------------------------------------------------------------------
     function beforeSwap(
         address,
         PoolKey calldata key,
         SwapParams calldata params,
         bytes calldata
-    ) external view onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24) {
+    ) external onlyPoolManager returns (bytes4, BeforeSwapDelta, uint24) {
         uint8 tier = _tierFromTickSpacing(key.tickSpacing);
         SpryFeeParams memory params_ = _tierParams(tier);
 
@@ -99,19 +145,72 @@ contract SpryHook is IHooks {
         (uint160 sqrtPriceX96, , , ) = POOL_MANAGER.getSlot0(pid);
         uint128 liquidity = POOL_MANAGER.getLiquidity(pid);
 
-        uint24 dynamicFee = SmartFeeLib.getDynamicFee(
-            sqrtPriceX96,
-            liquidity,
-            params.zeroForOne,
-            params.amountSpecified,
-            params_
+        // Compute this swap's signed delta (positive = price up, negative = down)
+        int256 signedDelta = SmartFeeLib.computeSignedDelta(
+            sqrtPriceX96, liquidity, params.zeroForOne, params.amountSpecified
         );
+
+        // Lazy window reset + load
+        PoolWindow memory w = _poolWindow[pid];
+        if (block.number >= uint256(w.windowStart) + BLOCK_WINDOW) {
+            w.windowStart = uint64(block.number);
+            w.signedCum = 0;
+        }
+
+        int256 cumBefore = int256(w.signedCum);
+        int256 cumAfter = cumBefore + signedDelta;
+
+        uint24 dynamicFee = _computeCumulativeFee(cumBefore, cumAfter, params_);
+
+        // Save the new cumulative state (saturate to int128 bounds defensively;
+        // realistic cum magnitudes are bounded by ~50_000 in normal use, vastly
+        // below int128.max ≈ 1.7e38).
+        if (cumAfter > type(int128).max) cumAfter = type(int128).max;
+        else if (cumAfter < type(int128).min) cumAfter = type(int128).min;
+        w.signedCum = int128(cumAfter);
+        _poolWindow[pid] = w;
 
         return (
             IHooks.beforeSwap.selector,
             BeforeSwapDeltaLibrary.ZERO_DELTA,
             dynamicFee | LPFeeLibrary.OVERRIDE_FEE_FLAG
         );
+    }
+
+    /// @dev The three-case fee dispatch documented above. Pure logic so it
+    ///      can be unit-tested in isolation.
+    function _computeCumulativeFee(
+        int256 cumBefore,
+        int256 cumAfter,
+        SpryFeeParams memory p
+    ) internal pure returns (uint24) {
+        // Degenerate: no movement.
+        if (cumBefore == cumAfter) {
+            return uint24(p.safeFee);
+        }
+
+        uint256 absBefore = cumBefore >= 0 ? uint256(cumBefore) : uint256(-cumBefore);
+        uint256 absAfter  = cumAfter  >= 0 ? uint256(cumAfter)  : uint256(-cumAfter);
+
+        // Sign-flip detection: cumBefore and cumAfter have opposite strict signs.
+        bool flipped = (cumBefore > 0 && cumAfter < 0) || (cumBefore < 0 && cumAfter > 0);
+
+        if (!flipped) {
+            // Same sign (or one is zero) — Growth vs Unwind by magnitude.
+            if (absAfter > absBefore) {
+                // GROWTH: charge the curve rate at the new deeper cum point.
+                return SmartFeeLib.feeForDelta(cumAfter, p);
+            } else {
+                // UNWIND: charge the tier's base rate.
+                return uint24(p.safeFee);
+            }
+        } else {
+            // FLIP: weighted average over the unwind half (|cumBefore| at
+            // safeFee) and the growth half (|cumAfter| at curve rate).
+            uint256 growthRate = SmartFeeLib.feeForDelta(cumAfter, p);
+            uint256 weighted = uint256(p.safeFee) * absBefore + growthRate * absAfter;
+            return uint24(weighted / (absBefore + absAfter));
+        }
     }
 
     /// @notice Public view-equivalent of the internal tier dispatch.
