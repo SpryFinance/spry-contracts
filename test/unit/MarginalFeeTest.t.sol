@@ -443,23 +443,95 @@ contract MarginalFeeTest is Test {
         int256 hi = delta > 0 ? delta + 1 : delta - 1;
         uint24 marginal = SmartFeeLib.marginalFee(delta, hi, p);
 
-        // Tolerance: 250 pips. Three components contribute:
-        //   1. Mid-point bias (~slope/2): ≤ 15 pips across all zones.
+        // Tolerance: 50 pips. Two components contribute:
+        //   1. Mid-point bias (~slope/2): the marginal averages the
+        //      curve over [delta, delta±1], so it differs from
+        //      feeForDelta(delta) by ~slope/2. Worst case ≤ 15 pips
+        //      across all zones (steepest alert ramp).
         //   2. Integer truncation in the antiderivative arithmetic:
-        //      ≤ 10 pips per evaluation.
-        //   3. PRB-Math precision asymmetry in the danger zone:
-        //      `feeForDelta._exp` does SD59x18 (b·d)/1e18 floor-div
-        //      before re-multiplying by 1e18/1000, while `_dangerArea`
-        //      computes (b·d)/1000 in raw int with no intermediate
-        //      truncation. The two exp-arg values differ by up to
-        //      ~6e-3 in real terms, propagating to ~60 pips of fee
-        //      drift in the steep middle of the danger zone.
-        // 250 pips covers all three with a 4x safety margin while
-        // remaining tight enough (0.025% absolute) to catch a real
-        // refactor regression.
+        //      ≤ 10 pips per evaluation across alert + danger.
+        // 50 pips gives a 2x safety margin while remaining tight
+        // enough (0.005% absolute) to catch a real refactor regression.
+        // Both code paths now compute the exp argument via the same
+        // direct-raw (b·d)/1000 form (see `SmartFeeLib._exp`), so the
+        // PRB-Math precision asymmetry that prompted a 250-pip
+        // tolerance in an earlier revision no longer applies.
         uint256 diff = pointRate > marginal
             ? uint256(pointRate) - uint256(marginal)
             : uint256(marginal) - uint256(pointRate);
-        assertLe(diff, 250, "marginal-at-point drifted from feeForDelta");
+        assertLe(diff, 50, "marginal-at-point drifted from feeForDelta");
+    }
+
+    // =====================================================================
+    // FLIP edge case: extreme magnitude imbalance. The weighted-average
+    // formula is
+    //
+    //   marginal = (safeFee · |before| + ∫_0^{|after|} curve) / (|before| + |after|)
+    //
+    // Stresses the formula when one side is microscopic and the other
+    // is at the curve's full-range edge — exercising the division by
+    // (|before| + |after|) with a denominator dominated by the larger
+    // term and verifying no off-by-one or sign confusion at the limit.
+    // =====================================================================
+
+    /// @dev cumBefore = -1 (left, one unit below zero), cumAfter = +5000
+    ///      (right cap edge). Unwind half is a single delta-unit at
+    ///      safeFee; growth half is the integral over [0, 5000] right
+    ///      — the full safe + alert + danger sweep.
+    function testFlipWithTinyUnwindHugeRightGrowth() public pure {
+        SpryFeeParams memory p = _blueChip();
+        uint24 m = SmartFeeLib.marginalFee(int256(-1), int256(5000), p);
+
+        // areaUnwind = safeFee · 1                                       = 3 000
+        // areaGrowth = integral(0, 5000, right)
+        //            = safeFee · safeHigh
+        //              + alertArea(safeHigh, alertHigh, right)
+        //              + dangerArea(alertHigh, dangerHigh, right)
+        //            ≈ 3000·334 + ~5.7M (alert ramp) + ~150M (danger ramp)
+        // total / 5001 ≈ tens of thousands of pips — somewhere between
+        // alertEdgeFee (20 000) and capFee (55 000).
+        assertGt(uint256(m), 20_000, "tiny-unwind huge-right-growth marginal below alert edge");
+        assertLt(uint256(m), 55_000, "tiny-unwind huge-right-growth marginal above cap");
+    }
+
+    /// @dev Mirror on the left side. cumBefore = +1, cumAfter = -1000
+    ///      (left danger edge).
+    function testFlipWithTinyUnwindHugeLeftGrowth() public pure {
+        SpryFeeParams memory p = _blueChip();
+        uint24 m = SmartFeeLib.marginalFee(int256(1), int256(-1000), p);
+
+        // areaUnwind = safeFee · 1                                       = 3 000
+        // areaGrowth = integral(0, 1000, left)
+        //            = safeFee · |safeLow|
+        //              + alertArea(|safeLow|, |alertLow|, left)
+        //              + dangerArea(|alertLow|, |dangerLow|, left)
+        // marginal / 1001 ≈ somewhere between alertEdgeFee and dangerEdgeFee.
+        assertGt(uint256(m), 10_000, "tiny-unwind huge-left-growth marginal too low");
+        assertLt(uint256(m), 50_000, "tiny-unwind huge-left-growth marginal too high");
+    }
+
+    /// @dev Symmetric inverse: huge unwind, tiny growth. cumBefore =
+    ///      +5000, cumAfter = -1. The unwind half is far larger than
+    ///      the growth half, so the weighted average should be
+    ///      dominated by safeFee — within a few hundred pips of it.
+    function testFlipWithHugeUnwindTinyLeftGrowth() public pure {
+        SpryFeeParams memory p = _blueChip();
+        uint24 m = SmartFeeLib.marginalFee(int256(5000), int256(-1), p);
+
+        // areaUnwind = safeFee · 5000                          = 15 000 000
+        // areaGrowth = integral(0, 1, left) = safeFee · 1      =      3 000
+        // total = 15 003 000. / 5001 ≈ 3000 pips ≈ safeFee.
+        // Allow a small drift for any rounding (≤ 5 pips).
+        assertApproxEqAbs(uint256(m), uint256(p.safeFee), 5);
+    }
+
+    /// @dev Boundary FLIP: cumBefore = +1, cumAfter = -1. Both halves
+    ///      have magnitude 1; the unwind half is safeFee · 1 and the
+    ///      growth half is also safeFee · 1 (safe zone). Marginal
+    ///      should be exactly safeFee.
+    function testFlipUnitMagnitudesReturnSafeFee() public pure {
+        SpryFeeParams memory p = _blueChip();
+        assertEq(SmartFeeLib.marginalFee(int256(1), int256(-1), p), uint256(p.safeFee));
+        assertEq(SmartFeeLib.marginalFee(int256(-1), int256(1), p), uint256(p.safeFee));
     }
 }

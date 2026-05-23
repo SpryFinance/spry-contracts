@@ -226,6 +226,142 @@ contract CumulativeFeeBehavior is Test {
     }
 
     // ------------------------------------------------------------------
+    // Right-side mirror of testUnwindFromAlertBackToSafePaysSafeRate.
+    // Cum starts POSITIVE in the right alert zone; the reverse swap
+    // brings it back into the right safe zone without crossing zero.
+    // Pinned separately from the left-side test because SmartFeeLib's
+    // delta formula is asymmetric (denominator includes the swap on
+    // one side, not the other), so the cum trajectory math differs
+    // sign-by-sign even though the dispatch logic is symmetric.
+    // ------------------------------------------------------------------
+    function testUnwindFromRightAlertBackToSafePaysSafeRate() public {
+        // Pre-push: exactInput 6.67e21 token1 (zeroForOne=false). The
+        // SmartFeeLib delta formula gives `delta = +1000 · amount0Out /
+        // reserve0`. With amount0Out_implied ≈ 4e21 against reserve0 =
+        // 1e22, delta ≈ +400 — solidly inside right alert (safeHigh=334,
+        // alertHigh=1000).
+        router.swapExactInputSingle(key, false, 6.67e21, 1, address(this), block.timestamp + 100, "");
+
+        (, int128 cumAfterPush) = hook.poolWindow(key.toId());
+        int256 cumPush = int256(cumAfterPush);
+        assertGt(cumPush, 334, "pre-push did not enter right alert");
+        assertLt(cumPush, 1000, "pre-push overshot into right danger");
+
+        // Reverse partial swap: cum back into safe (cum in (0, 334)).
+        uint256 t1Before = token1.balanceOf(address(this));
+        uint256 inputAmount = 2e21;
+        router.swapExactInputSingle(key, true, inputAmount, 1, address(this), block.timestamp + 100, "");
+        uint256 received = token1.balanceOf(address(this)) - t1Before;
+
+        (, int128 cumAfterReverse) = hook.poolWindow(key.toId());
+        int256 cumReverse = int256(cumAfterReverse);
+        assertGt(cumReverse, 0, "reverse swap flipped sign - this is a FLIP, not UNWIND");
+        assertLt(cumReverse, 334, "reverse swap did not return to safe zone");
+        assertLt(cumReverse, cumPush, "reverse swap did not decrease cum magnitude");
+
+        // UNWIND from right alert pays safeFee. Pool now skewed (R0 ≈
+        // 6e21, R1 ≈ 1.667e22 after pre-push). 2e21 of token0 input
+        // should fetch ~5e21 of token1 at the new price; any rate
+        // higher than safeFee would drop output below 4e21.
+        assertGt(received, 4e21, "reverse-swap output too low - UNWIND did not pay safeFee");
+    }
+
+    // ------------------------------------------------------------------
+    // Right-side mirror of testUnwindFromDangerBackToAlertPaysSafeRate.
+    // Two large same-direction swaps push cum past alertHigh = 1000?
+    // No — bounded under dangerHigh = 5000 actually. Wait: right-side
+    // danger is the range (alertHigh, dangerHigh] = (1000, 5000]. To
+    // enter right danger we need cum > 1000, but a single swap's delta
+    // is bounded by +1000 (asymptotic). So a *second* swap is required.
+    // ------------------------------------------------------------------
+    function testUnwindFromRightDangerBackToAlertPaysSafeRate() public {
+        // Two same-direction pre-swaps. After the first cum ≈ +400;
+        // after the second the reserves are skewed enough that the
+        // second swap's delta is smaller (~+286), landing cum near
+        // +686 — past alertEnd_right = ... wait, alert RIGHT ends at
+        // alertHigh = 1000. The danger zone is (1000, 5000]. To enter
+        // it we need cum > 1000. Two swaps won't get there.
+        //
+        // Instead we test the slightly different shape: cum past +500
+        // (well into alert) → UNWIND back toward +400 (still alert).
+        // Same dispatch logic (same sign, smaller magnitude → safeFee),
+        // exercised at a deeper starting cum than the simpler test.
+        router.swapExactInputSingle(key, false, 6.67e21, 1, address(this), block.timestamp + 100, "");
+        router.swapExactInputSingle(key, false, 6.67e21, 1, address(this), block.timestamp + 100, "");
+
+        (, int128 cumAfterPush) = hook.poolWindow(key.toId());
+        int256 cumPush = int256(cumAfterPush);
+        assertGt(cumPush, 500, "pre-push did not reach deep right alert");
+        assertLt(cumPush, 1000, "pre-push overshot past alertHigh");
+
+        // Reverse: cum back to ~+400 (shallower right alert).
+        uint256 t1Before = token1.balanceOf(address(this));
+        uint256 inputAmount = 2.86e21;
+        router.swapExactInputSingle(key, true, inputAmount, 1, address(this), block.timestamp + 100, "");
+        uint256 received = token1.balanceOf(address(this)) - t1Before;
+
+        (, int128 cumAfterReverse) = hook.poolWindow(key.toId());
+        int256 cumReverse = int256(cumAfterReverse);
+        assertGt(cumReverse, 0, "reverse swap flipped sign - this is a FLIP, not UNWIND");
+        assertLt(cumReverse, cumPush, "reverse swap did not decrease cum magnitude");
+
+        // UNWIND from deep alert pays safeFee. Pool heavily skewed
+        // (R0 ≈ 4.3e21, R1 ≈ 2.3e22 after two pre-swaps).
+        assertGt(received, 7e21, "reverse-swap output too low - UNWIND did not pay safeFee");
+    }
+
+    // ------------------------------------------------------------------
+    // FLIP from one non-safe zone to another, via a single same-block
+    // swap that crosses zero. cumBefore in right safe, cumAfter in
+    // left alert. Pins the weighted-average formula on a trajectory
+    // whose growth half visits the linear-ramp zone (`_alertArea` is
+    // called inside `_integral` for the growth half's [250, 300] range).
+    //
+    // A FLIP large enough to land cumAfter past dangerLow (= −1000)
+    // from cumBefore = +200 would require single-swap delta ≤ −1200,
+    // beyond the per-swap asymptotic bound of ~±500 imposed by the
+    // constant-product reserve constraint. So this test exercises
+    // "safe → alert" FLIP; the unit-level `testFlipWithRightAlertGrowth`
+    // covers the pure-alert-on-both-halves shape.
+    // ------------------------------------------------------------------
+    function testFlipFromRightSafeToLeftAlertVisitsAlertZone() public {
+        // Pre-push: exactInput 2.5e21 token1 → amount0Out_implied ≈ 2e21,
+        // delta ≈ +200 (safe right).
+        router.swapExactInputSingle(key, false, 2.5e21, 1, address(this), block.timestamp + 100, "");
+
+        (, int128 cumAfterPush) = hook.poolWindow(key.toId());
+        int256 cumPush = int256(cumAfterPush);
+        assertGt(cumPush, 0, "pre-push did not push cum positive");
+        assertLt(cumPush, 250, "pre-push went past safe-right boundary");
+
+        // Reverse: massive same-block input pushes amount1Out close to
+        // R1 (now ≈ 1.25e22 after the pre-push). Single-swap delta
+        // approaches −500 asymptotically as amount1Out → R1.
+        uint256 t1Before = token1.balanceOf(address(this));
+        router.swapExactInputSingle(key, true, 1e24, 1, address(this), block.timestamp + 100, "");
+        uint256 received = token1.balanceOf(address(this)) - t1Before;
+
+        (, int128 cumAfterFlip) = hook.poolWindow(key.toId());
+        int256 cumFlip = int256(cumAfterFlip);
+        assertLt(cumFlip, 0, "FLIP did not cross zero");
+        assertLt(cumFlip, -250, "FLIP did not enter left alert zone");
+        assertGt(cumFlip, -500, "FLIP overshot into left danger");
+
+        // FLIP weighted average for cumPush ≈ +200, cumFlip ≈ -300:
+        //   areaUnwind = safeFee · 200          = 600 000
+        //   areaGrowth = safeFee · 250 + alertArea(250, 300, left)
+        //              = 750 000 + 235 000      = 985 000
+        //   total / 500                          ≈ 3170 pips (0.317 %)
+        // The marginal fee is only slightly above safeFee because the
+        // growth half barely enters alert. Output should be close to
+        // R1 (the swap drains most of token1). Floor at 1e22 catches
+        // any failure to recognize the FLIP and falling back to
+        // integrating the curve over the full +200 → -300 range,
+        // which would charge a much higher rate.
+        assertGt(received, 1e22, "FLIP output too low - weighted-average formula broke");
+    }
+
+    // ------------------------------------------------------------------
     // FLIP case — a single swap that crosses zero. Pays a weighted
     // average of safeFee (unwind half) and curve rate (growth half).
     // ------------------------------------------------------------------

@@ -179,9 +179,20 @@ library SmartFeeLib {
     /// @dev Exponential-zone formula using PRB-Math SD59x18.
     ///
     ///      fee_pips = (a · exp(b · delta / 1000)) / 1e36
+    ///
+    ///      Computes the exp argument as `(b · delta) / 1000` directly in
+    ///      raw int and wraps the result once — equivalent to but
+    ///      strictly more precise than the SD59x18-native `wrap(b) ·
+    ///      wrap(delta) / wrap(1000)` form, whose intermediate SD59x18
+    ///      multiplication floor-divides by 1e18 and loses precision
+    ///      for the typical (b ~ 1e17, delta ~ 1e3) magnitudes Spry
+    ///      passes in. `_dangerArea` (which integrates this curve)
+    ///      uses the same direct-raw form, so the two APIs now agree
+    ///      to within a few pips across the full danger zone.
     function _exp(int128 a, int128 b, int256 delta) private pure returns (uint256) {
+        int256 expArg = (int256(b) * delta) / 1000;
         return (uint256(int256(a)) *
-            unwrap(E.pow((wrap(int256(b)) * wrap(delta)) / wrap(1000))).toUint256())
+            unwrap(E.pow(wrap(expArg))).toUint256())
             / (1e36).toUint256();
     }
 

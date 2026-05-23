@@ -257,5 +257,72 @@ contract SpryHookZonesTest is Test {
         assertLt(int256(signedCum), int256(cumBeforeRoll), "window did not reset across BLOCK_WINDOW boundary");
     }
 
+    // -----------------------------------------------------------------
+    // Cum saturation at int128 bounds. Realistic per-swap delta is
+    // bounded by ±1000, and int128.max is ~1.7 × 10^38 — reaching it
+    // via organic accumulation would require ~10^35 swaps in one
+    // window, vastly beyond any conceivable block. The saturation
+    // logic is defensive against integer overflow if a bug or storage
+    // corruption ever put the cum near the bound, so the only way to
+    // exercise it is to vm.store-seed the slot.
+    //
+    // Storage layout: `_poolWindow` is SpryHook's only mutable state
+    // variable, so it lives at slot 0. The mapping value slot for
+    // `_poolWindow[pid]` is keccak256(abi.encode(pid, 0)). The
+    // PoolWindow struct packs into a single 256-bit slot:
+    //   bits [0..63]   : windowStart  (uint64)
+    //   bits [64..191] : signedCum    (int128, 2's-complement signed)
+    //   bits [192..255]: padding
+    // -----------------------------------------------------------------
+
+    function testCumSaturatesAtInt128Max() public {
+        bytes32 slot = keccak256(abi.encode(key.toId(), uint256(0)));
+
+        // Seed signedCum to (int128.max - 100). Any positive delta on
+        // the next swap will push cumAfter past int128.max and must
+        // be saturated to int128.max by the hook's explicit clamp.
+        int128 nearMax = type(int128).max - 100;
+        uint256 packed = uint256(uint64(block.number)) | (uint256(uint128(nearMax)) << 64);
+        vm.store(address(hook), slot, bytes32(packed));
+
+        // Confirm the seed via the public getter — pins the storage-
+        // layout assumption above.
+        (uint64 wsSeeded, int128 cumSeeded) = hook.poolWindow(key.toId());
+        assertEq(uint256(wsSeeded), block.number, "vm.store windowStart");
+        assertEq(int256(cumSeeded), int256(nearMax), "vm.store signedCum");
+
+        // Positive-delta swap. exactOut amount0Out = 5e21 against
+        // reserve0 = 1e22 → signedDelta = +500, so cumAfter (int256)
+        // = (int128.max - 100) + 500 = int128.max + 400. The clamp
+        // in beforeSwap must saturate, not wrap.
+        _callBeforeSwap(false, int256(5e21));
+
+        (, int128 cumAfter) = hook.poolWindow(key.toId());
+        assertEq(int256(cumAfter), int256(type(int128).max), "cum did not saturate at int128.max");
+    }
+
+    function testCumSaturatesAtInt128Min() public {
+        bytes32 slot = keccak256(abi.encode(key.toId(), uint256(0)));
+
+        // Symmetric: seed signedCum to (int128.min + 100) and push it
+        // further negative. Saturation must clamp to int128.min.
+        int128 nearMin = type(int128).min + 100;
+        uint256 packed = uint256(uint64(block.number)) | (uint256(uint128(nearMin)) << 64);
+        vm.store(address(hook), slot, bytes32(packed));
+
+        (uint64 wsSeeded, int128 cumSeeded) = hook.poolWindow(key.toId());
+        assertEq(uint256(wsSeeded), block.number);
+        assertEq(int256(cumSeeded), int256(nearMin));
+
+        // Negative-delta swap. exactOut amount1Out = 5e21 against
+        // reserve1 = 1e22 → signedDelta = -1000·5e21/1.5e22 = -333,
+        // so cumAfter (int256) = (int128.min + 100) - 333 = int128.min
+        // - 233. Saturates to int128.min.
+        _callBeforeSwap(true, int256(5e21));
+
+        (, int128 cumAfter) = hook.poolWindow(key.toId());
+        assertEq(int256(cumAfter), int256(type(int128).min), "cum did not saturate at int128.min");
+    }
+
     receive() external payable {}
 }
