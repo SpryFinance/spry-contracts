@@ -118,22 +118,111 @@ contract CumulativeFeeBehavior is Test {
     // ------------------------------------------------------------------
     // UNWIND case — reverse-direction swap pays the base safe-zone rate
     // regardless of pool's current cumulative position.
+    //
+    // This test exercises the shallow case: both pre-swap and reverse
+    // stay inside the safe zone (the first swap of 5e20 vs 1e22 reserves
+    // contributes delta ≈ -32; the reverse swap of 1e17 contributes
+    // delta ≈ +10; cum trajectory is 0 → -32 → -22, all in safe). The
+    // deep cases — UNWIND from alert back to safe, and UNWIND from
+    // danger back to alert — are exercised by the two tests below.
     // ------------------------------------------------------------------
     function testReverseSwapPaysSafeRate() public {
-        // First swap: large enough to push pool well into alert/danger.
         router.swapExactInputSingle(key, true, 5e20, 1, address(this), block.timestamp + 100, "");
 
-        // Reverse swap (UNWIND) — pool is far from neutral; the swap
-        // brings it back. Fee should be charged at the tier's base rate.
+        // Reverse swap (UNWIND, shallow). Fee should be safeFee.
         uint256 t0Before = token0.balanceOf(address(this));
         router.swapExactInputSingle(key, false, 1e17, 1, address(this), block.timestamp + 100, "");
         uint256 received = token0.balanceOf(address(this)) - t0Before;
 
-        // Approximate: a 1e17 swap at 0.30% safe-zone fee with no severe
-        // slippage should return ≥ ~99.5% of input. Anything dramatically
-        // less would indicate the unwind was being charged at the high
-        // alert/danger rate.
+        // A 1e17 swap at 0.30% safe-zone fee with no severe slippage
+        // should return ≥ ~99.5% of input. Anything dramatically less
+        // would indicate a fee greater than safeFee was applied.
         assertGt(received, (1e17 * 995) / 1000, "unwind charged at base rate");
+    }
+
+    // ------------------------------------------------------------------
+    // UNWIND case (deep) — cum starts in the alert zone, the reverse
+    // swap brings it back into the safe zone without crossing zero.
+    // The dispatch must hit the UNWIND branch (same sign, smaller
+    // magnitude), returning safeFee — not the alert-ramp rate the
+    // pre-cum endpoint sits at.
+    // ------------------------------------------------------------------
+    function testUnwindFromAlertBackToSafePaysSafeRate() public {
+        // Pre-push: exactInput of 1e22 token0 against 1e22 reserves
+        // yields amount1Out_implied ≈ 5e21 and delta ≈ -333 (left alert).
+        router.swapExactInputSingle(key, true, 1e22, 1, address(this), block.timestamp + 100, "");
+
+        (, int128 cumAfterPush) = hook.poolWindow(key.toId());
+        int256 cumPush = int256(cumAfterPush);
+        assertLt(cumPush, -250, "pre-push did not enter left alert");
+        assertGt(cumPush, -500, "pre-push overshot into danger");
+
+        // Reverse partial swap. Sized to bring cum back into safe
+        // (cum ∈ (-250, 0)) without crossing zero.
+        uint256 t0Before = token0.balanceOf(address(this));
+        uint256 inputAmount = 1.5e21;
+        router.swapExactInputSingle(key, false, inputAmount, 1, address(this), block.timestamp + 100, "");
+        uint256 received = token0.balanceOf(address(this)) - t0Before;
+
+        // Verify the cum trajectory IS the alert→safe same-sign unwind:
+        //   - still negative (no FLIP)
+        //   - back in safe zone (|cum| < 250)
+        //   - strictly smaller magnitude than the pre-push position
+        (, int128 cumAfterReverse) = hook.poolWindow(key.toId());
+        int256 cumReverse = int256(cumAfterReverse);
+        assertLt(cumReverse, 0, "reverse swap flipped sign - this is a FLIP, not UNWIND");
+        assertGt(cumReverse, -250, "reverse swap did not return to safe zone");
+        assertGt(cumReverse, cumPush, "reverse swap did not decrease cum magnitude");
+
+        // marginalFee in the UNWIND branch returns safeFee directly (no
+        // integration). With safeFee = 3000 pips (0.30%) the reverse
+        // swap receives nearly the full no-fee CPMM output. With the
+        // pool now skewed (R0 ≈ 1.99e22, R1 ≈ 5e21 after the pre-push),
+        // 1.5e21 in token1 should yield ≥ 4e21 in token0 — well above
+        // the ≤ 4e21 floor any higher zone fee would produce.
+        assertGt(received, 4e21, "reverse-swap output too low - UNWIND did not pay safeFee");
+    }
+
+    // ------------------------------------------------------------------
+    // UNWIND case (very deep) — cum starts in the danger zone, the
+    // reverse swap brings it back into the alert zone without crossing
+    // zero. Same dispatch branch, same safeFee — pinned against a
+    // refactor that might forget to short-circuit on UNWIND and
+    // instead integrate the (expensive, very-high-rate) curve from
+    // dangerLow back to alertLow.
+    // ------------------------------------------------------------------
+    function testUnwindFromDangerBackToAlertPaysSafeRate() public {
+        // Pre-push: three large same-direction swaps land cum past
+        // |alertLow| = 500 (well into danger) without overshooting
+        // into the cap zone (|dangerLow| = 1000).
+        for (uint256 i = 0; i < 3; ++i) {
+            router.swapExactInputSingle(key, true, 1e22, 1, address(this), block.timestamp + 100, "");
+        }
+
+        (, int128 cumAfterPush) = hook.poolWindow(key.toId());
+        int256 cumPush = int256(cumAfterPush);
+        assertLt(cumPush, -500, "pre-push did not enter left danger");
+        assertGt(cumPush, -1000, "pre-push overshot into cap zone");
+
+        // Reverse swap sized to bring cum back into alert (cum ∈
+        // (-500, -250)) without crossing zero or reaching safe.
+        uint256 t0Before = token0.balanceOf(address(this));
+        uint256 inputAmount = 5e21;
+        router.swapExactInputSingle(key, false, inputAmount, 1, address(this), block.timestamp + 100, "");
+        uint256 received = token0.balanceOf(address(this)) - t0Before;
+
+        // Verify the cum trajectory IS the danger→alert same-sign unwind.
+        (, int128 cumAfterReverse) = hook.poolWindow(key.toId());
+        int256 cumReverse = int256(cumAfterReverse);
+        assertLt(cumReverse, 0, "reverse swap flipped sign - this is a FLIP, not UNWIND");
+        assertGt(cumReverse, -500, "reverse swap did not return into alert zone");
+        assertGt(cumReverse, cumPush, "reverse swap did not decrease cum magnitude");
+
+        // UNWIND from danger pays safeFee. The pool is heavily skewed
+        // after three pre-swaps (R0 ≈ 4e22, R1 ≈ 2.5e21), so 5e21 in
+        // token1 should fetch a sizable amount of token0 — well above
+        // what a multi-bps fee would leave.
+        assertGt(received, 1e22, "reverse-swap output too low - UNWIND from danger did not pay safeFee");
     }
 
     // ------------------------------------------------------------------
