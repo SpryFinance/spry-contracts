@@ -194,5 +194,68 @@ contract SpryHookZonesTest is Test {
         assertEq(fee, 3000, "zero amountSpecified -> safe-zone fee");
     }
 
+    // -----------------------------------------------------------------
+    // poolWindow() getter — verifies that the public view reflects the
+    // internal `_poolWindow` mapping the hook updates on every swap.
+    // The getter is exercised 128k times per invariant by the fuzz
+    // campaign; this test gives it a deterministic regression target
+    // so any change in the getter's return shape is caught immediately.
+    // -----------------------------------------------------------------
+
+    function testPoolWindowStartsAtZero() public view {
+        // No swap has happened yet; the lazy initialization leaves both
+        // fields at their default zero values.
+        (uint64 windowStart, int128 signedCum) = hook.poolWindow(key.toId());
+        assertEq(uint256(windowStart), 0, "fresh pool: windowStart != 0");
+        assertEq(int256(signedCum),    0, "fresh pool: signedCum != 0");
+    }
+
+    function testPoolWindowTracksFirstSwap() public {
+        // Reserves are ~1e22 each; an amount0Out of 2.5e21 produces
+        // delta = 1000 * 2.5e21 / 1e22 ≈ +250 (interior of the safe zone).
+        // V4's LiquidityAmounts rounds slightly, so we use a small
+        // tolerance on the expected magnitude.
+        _callBeforeSwap(false, int256(2.5e21));
+
+        (uint64 windowStart, int128 signedCum) = hook.poolWindow(key.toId());
+        assertEq(uint256(windowStart), block.number, "windowStart != block.number after first swap");
+        assertGe(int256(signedCum), int256(245), "signedCum below the expected ~+250");
+        assertLe(int256(signedCum), int256(255), "signedCum above the expected ~+250");
+    }
+
+    function testPoolWindowAccumulatesMultipleSameDirectionSwaps() public {
+        // Three small same-direction swaps of ~+100 each. The cumulative
+        // grows monotonically inside one window, and the windowStart
+        // never advances because we stay in the same block.
+        _callBeforeSwap(false, int256(1e21));
+        _callBeforeSwap(false, int256(1e21));
+        _callBeforeSwap(false, int256(1e21));
+
+        (uint64 windowStart, int128 signedCum) = hook.poolWindow(key.toId());
+        assertEq(uint256(windowStart), block.number, "windowStart drifted across same-block swaps");
+        // Each individual delta is ~+100, but later swaps shift reserves
+        // so the contribution drifts slightly. Pin a generous range
+        // around the expected +300.
+        assertGe(int256(signedCum), int256(270), "signedCum below the expected ~+300");
+        assertLe(int256(signedCum), int256(310), "signedCum above the expected ~+300");
+    }
+
+    function testPoolWindowResetsAfterBlockBoundary() public {
+        // Push the cum, advance past BLOCK_WINDOW, then push again with
+        // a strictly smaller swap. The post-reset signedCum should equal
+        // the new swap's delta alone — strictly less than the pre-roll
+        // accumulated value.
+        _callBeforeSwap(false, int256(2.5e21));  // delta ≈ +250
+        (, int128 cumBeforeRoll) = hook.poolWindow(key.toId());
+        assertGt(int256(cumBeforeRoll), 0, "first swap did not accumulate");
+
+        vm.roll(block.number + uint256(hook.BLOCK_WINDOW()));
+        _callBeforeSwap(false, int256(1e21));  // delta ≈ +100 in the new window
+
+        (uint64 windowStart, int128 signedCum) = hook.poolWindow(key.toId());
+        assertEq(uint256(windowStart), block.number, "new-window swap did not refresh windowStart");
+        assertLt(int256(signedCum), int256(cumBeforeRoll), "window did not reset across BLOCK_WINDOW boundary");
+    }
+
     receive() external payable {}
 }

@@ -406,4 +406,60 @@ contract MarginalFeeTest is Test {
         // average is monotone non-decreasing as the upper bound grows.
         assertGe(uint256(m2), uint256(m1));
     }
+
+    /// @dev Pins the two-API consistency: the marginal-fee integral over
+    ///      a zero-width interval `[c, c±1]` (picked away from zero so
+    ///      it's a GROWTH step on the same side, not an UNWIND) must
+    ///      approach the point-evaluated `feeForDelta(c)`. Concretely:
+    ///        - safe / cap zones: the curve is constant, so marginal
+    ///          equals `feeForDelta(c)` exactly.
+    ///        - alert zones: the curve is linear, so the marginal equals
+    ///          the mid-point of the two endpoint rates — at most a few
+    ///          pips off the point evaluation across our tier slopes.
+    ///        - danger zones: the curve is exponential, so the marginal
+    ///          carries a small higher-order term but stays close.
+    ///      A drift larger than `MAX_DRIFT_PIPS` between the two APIs
+    ///      would indicate a refactor regression in either function.
+    function testFuzzMarginalAtPointMatchesFeeForDelta(int32 deltaRaw) public pure {
+        // Bound to the curve's natural domain across every zone.
+        int256 delta = bound(int256(deltaRaw), -1100, 5100);
+        if (delta == 0) return;  // ambiguous side; the others cover this trivially
+
+        SpryFeeParams memory p = _blueChip();
+
+        // The danger→cap transition is the curve's only intentional
+        // discontinuity (dangerEdgeFee → capFee, a ~5000-pip step).
+        // At delta = ±dangerEnd, stepping the marginal by one unit
+        // crosses that step, so the two APIs return values from
+        // different zones by design — not a drift. Skip those two.
+        if (delta == int256(p.dangerHigh)) return;
+        if (delta == int256(p.dangerLow))  return;
+
+        uint24 pointRate = SmartFeeLib.feeForDelta(delta, p);
+
+        // Step AWAY from zero by one unit so the marginal is computed
+        // over a GROWTH step on the same side as `delta`, not an UNWIND
+        // back toward zero.
+        int256 hi = delta > 0 ? delta + 1 : delta - 1;
+        uint24 marginal = SmartFeeLib.marginalFee(delta, hi, p);
+
+        // Tolerance: 250 pips. Three components contribute:
+        //   1. Mid-point bias (~slope/2): ≤ 15 pips across all zones.
+        //   2. Integer truncation in the antiderivative arithmetic:
+        //      ≤ 10 pips per evaluation.
+        //   3. PRB-Math precision asymmetry in the danger zone:
+        //      `feeForDelta._exp` does SD59x18 (b·d)/1e18 floor-div
+        //      before re-multiplying by 1e18/1000, while `_dangerArea`
+        //      computes (b·d)/1000 in raw int with no intermediate
+        //      truncation. The two exp-arg values differ by up to
+        //      ~6e-3 in real terms, propagating to ~60 pips of fee
+        //      drift in the steep middle of the danger zone.
+        // 250 pips covers all three with a 4x safety margin while
+        // remaining tight enough (0.025% absolute) to catch a real
+        // refactor regression.
+        uint256 diff = pointRate > marginal
+            ? uint256(pointRate) - uint256(marginal)
+            : uint256(marginal) - uint256(pointRate);
+        assertLe(diff, 250, "marginal-at-point drifted from feeForDelta");
+    }
 }
