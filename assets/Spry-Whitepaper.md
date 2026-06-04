@@ -679,11 +679,10 @@ not ours.
 
 V4 requires the hook's address itself to encode its permissions in its low 14
 bits. `SpryHook.permissionsFlags()` returns `BEFORE_SWAP_FLAG = 1 << 7` and
-nothing else. The deploy script mines a CREATE2 salt such that
-
-$$
-\mathrm{uint160}(\text{hookAddr}) \;\&\; \mathtt{0x3FFF} \;=\; \mathtt{0x0080}
-$$
+nothing else. The deploy script mines a CREATE2 salt whose resulting
+address satisfies `uint160(hookAddr) & 0x3FFF == 0x0080` — i.e. the low
+14 bits (`0x3FFF` is `Hooks.ALL_HOOK_MASK`) equal the BEFORE_SWAP flag
+(`0x0080 == 1 << 7`) and nothing else.
 
 With a single-flag target this typically converges in a few thousand
 iterations of `keccak256` — sub-second on commodity hardware off-chain. The
