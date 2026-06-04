@@ -2,10 +2,13 @@
 pragma solidity ^0.8.26;
 
 /// @notice One complete tier definition for the SmartFee dynamic-fee curve.
-///         Pool creators select a tier at `manager.initialize` time by
-///         OR-ing the tier index into the lower bits of `PoolKey.fee`
-///         (alongside the V4 `DYNAMIC_FEE_FLAG`). The lower-8-bit tier index
-///         then dispatches to one of these parameter sets inside the hook.
+///         Pool creators select a tier at `manager.initialize` time via
+///         `PoolKey.tickSpacing` (one of 1 / 10 / 60 / 200 / 1000); the
+///         pool's `fee` field carries V4's `DYNAMIC_FEE_FLAG` unchanged.
+///         `SpryHook._tierFromTickSpacing` maps that tickSpacing to one of
+///         these parameter sets. (tickSpacing, not the lower bits of `fee`,
+///         because V4's `LPFeeLibrary.isDynamicFee` uses EXACT equality on
+///         the flag, leaving no room to repurpose `fee`'s low bits.)
 ///
 /// @dev    All fee values are in V4 pips (1_000_000 = 100%). Zone boundaries
 ///         are in per-mille of pool reserves — the same "delta" unit

@@ -36,7 +36,7 @@ native ETH, flash-accounting multi-hop, and audited swap engine.
 This whitepaper formalises the impermanent-loss problem, derives the dynamic
 fee curve, specifies the tier registry and cumulative tracker, proves the
 integral-mode path-independence property, walks the contract surface, and
-documents the 224 forge tests that back each claim.
+documents the 256 forge tests that back each claim.
 
 ---
 
@@ -606,9 +606,9 @@ depends on.
 
 | Contract | Path | SLOC | Role |
 |---|---|---|---|
-| `SpryHook` | `contracts/SpryHook.sol` | 241 | `IHooks` implementation. Declares only `BEFORE_SWAP_FLAG` in its permissions bitmap; the other entry points are present for interface completeness and revert if anyone but `PoolManager` calls them. The active body reads `slot0` + `liquidity`, computes the swap's signed delta via `SmartFeeLib.computeSignedDelta`, lazily resets the per-pool cumulative window on a new block, accumulates the delta into `signedCum`, dispatches to `SmartFeeLib.marginalFee` for the integral-mode fee, and returns the result OR-ed with `LPFeeLibrary.OVERRIDE_FEE_FLAG`. The contract also holds the 5-tier parameter registry returned by `_tierParams(uint8)` and dispatched from `PoolKey.tickSpacing`. |
+| `SpryHook` | `contracts/SpryHook.sol` | 248 | `IHooks` implementation. Declares only `BEFORE_SWAP_FLAG` in its permissions bitmap; the other entry points are present for interface completeness and revert if anyone but `PoolManager` calls them. The active body reads `slot0` + `liquidity`, computes the swap's signed delta via `SmartFeeLib.computeSignedDelta`, lazily resets the per-pool cumulative window on a new block, accumulates the delta into `signedCum`, dispatches to `SmartFeeLib.marginalFee` for the integral-mode fee, and returns the result OR-ed with `LPFeeLibrary.OVERRIDE_FEE_FLAG`. The contract also holds the 5-tier parameter registry returned by `_tierParams(uint8)` and dispatched from `PoolKey.tickSpacing`. |
 | `SpryRouter` | `contracts/SpryRouter.sol` | 509 | Swap-only periphery router. Public methods: `swapExactInputSingle`, `swapExactOutputSingle`, `swapExactInput` (unbounded multi-hop), `swapExactOutput`, and their Permit / Permit2 / multicall variants. Every method opens exactly one `PoolManager.unlock` call. Slippage, deadline, native-ETH refund, and fee-on-transfer-tolerant settlement live here. The router holds no funds at rest and never mints LP shares — liquidity provision goes through Uniswap's canonical V4 `PositionManager`. |
-| `SmartFeeLib` | `contracts/libs/SmartFeeLib.sol` | 203 | Fee math. Public entries: `getDynamicFee` (curve evaluated at this swap's delta), `feeForDelta` (curve at an arbitrary cum point), `computeSignedDelta` (the signed per-mille reserve-shift indicator), and `marginalFee(cumBefore, cumAfter, p)` (the integral-mode dispatch used by SpryHook). Internally dispatches across the four zones — safe (constant), alert (linear), danger (PRB-Math SD59x18 exponential), cap (constant) — with per-zone antiderivative helpers (`_alertArea`, `_dangerArea`) that stitch a piecewise integral across zone boundaries. |
+| `SmartFeeLib` | `contracts/libs/SmartFeeLib.sol` | 204 | Fee math. Public entries: `getDynamicFee` (curve evaluated at this swap's delta), `feeForDelta` (curve at an arbitrary cum point), `computeSignedDelta` (the signed per-mille reserve-shift indicator), and `marginalFee(cumBefore, cumAfter, p)` (the integral-mode dispatch used by SpryHook). Internally dispatches across the four zones — safe (constant), alert (linear), danger (PRB-Math SD59x18 exponential), cap (constant) — with per-zone antiderivative helpers (`_alertArea`, `_dangerArea`) that stitch a piecewise integral across zone boundaries. |
 | `SpryFeeTypes` | `contracts/libs/SpryFeeTypes.sol` | 19 | The `SpryFeeParams` struct: six `int32` zone bounds, four `int64` linear coefficients, four `int128` SD59x18 exponential coefficients, plus `uint32 safeFee` and `uint32 capFee`. One struct per tier, returned by `SpryHook._tierParams` as a bytecode immutable. |
 | `VirtualReserves` | `contracts/libs/VirtualReserves.sol` | 16 | Converts the V4 pool state $(\sqrt{P}_{X96}, L)$ into V2-equivalent virtual reserves $(R_0, R_1)$. Uses `FullMath.mulDiv` for 512-bit intermediate precision at extreme prices. |
 | `HookMiner` | `script/HookMiner.sol` | — | Brute-force CREATE2 salt miner. V4 derives a hook's permissions from the low 14 bits of its address, so the deployer must search for a salt whose resulting `CREATE2` address has exactly the right flag bits set. Solidity-pure; usable both on-chain in deploy scripts and inside `setUp()` of test contracts. |
@@ -984,11 +984,11 @@ pre-deploy checklist.
 
 ## 9. Testing methodology
 
-The repository ships with **224 tests across 38 suites**, all passing
+The repository ships with **256 tests across 41 suites**, all passing
 under the same Foundry profile that `forge coverage` uses (no `via_ir`,
 optimizer off) so coverage measurements are accurate. The suites are
-grouped under `test/unit/`, `test/integration/`, `test/scenarios/`,
-`test/fuzz/`, and `test/fork/`.
+grouped under `test/unit/` (6), `test/integration/` (13),
+`test/scenarios/` (18), `test/fuzz/` (2), and `test/fork/` (2).
 
 ### 9.1 Unit coverage of the algorithm
 
@@ -999,49 +999,59 @@ boundary continuity at every safe ↔ alert ↔ danger seam. A property-
 based fuzz test runs 256 random inputs over the full reserve range and
 asserts the returned fee never exceeds 55 000 pips.
 
-`MarginalFeeTest.t.sol` (28 tests) pins the integral-mode math: each
+`MarginalFeeTest.t.sol` (33 tests) pins the integral-mode math: each
 behavioral case (Growth / Unwind / Flip), each per-zone integral
-(safe / alert / danger / cap), boundary stitching across zones, and
-three property-based fuzz tests covering path-independence within the
-theoretical $2 \cdot |I| + 3 \cdot N$ truncation bound.
+(safe / alert / danger / cap), boundary stitching across zones, the
+FLIP weighted-average formula at extreme magnitude imbalance (tiny
+unwind / huge growth and its inverse), and property-based fuzz tests
+covering path-independence within the theoretical $2 \cdot |I| + 3
+\cdot N$ truncation bound plus the `feeForDelta` ↔ `marginalFee`
+agreement (≤ 50 pips across the whole curve).
 
 `AllTiersMarginalFeeTest.t.sol` (6 tests) re-runs the integral-mode
 sanity checks against the OTHER four tier parameter sets, so any drift
 between the hook's tier registry and what SmartFeeLib consumes surfaces
 immediately.
 
-`SpryHookZonesTest.t.sol` (10 tests) re-runs the zone coverage through
+`SpryHookZonesTest.t.sol` (16 tests) re-runs the zone coverage through
 `SpryHook.beforeSwap` (impersonating `PoolManager`) so the SmartFeeLib
 lines are exercised from the hook's inlined call site, not just through
-the standalone library harness. `SpryHookCoverageTest.t.sol` (11 tests)
-covers the no-op `IHooks` entry points: each is called once as
-`PoolManager` (right selector returned) and once from a non-`PoolManager`
-address (`NotPoolManager` revert).
+the standalone library harness; it also pins the `poolWindow` getter
+across a fresh pool / first swap / same-window accumulation / window
+reset, and the defensive `int128` cum-saturation clamp (seeded via
+`vm.store`). `SpryHookCoverageTest.t.sol` (13 tests) covers the no-op
+`IHooks` entry points (each called once as `PoolManager` for the right
+selector and once from a non-`PoolManager` address for `NotPoolManager`)
+plus the constructor's `ZeroBlockWindow` guard and immutable
+`BLOCK_WINDOW` persistence.
 
 `HookMinerTest.t.sol` (5 tests) covers CREATE2 salt mining and the bit-
 flag verification used by every test's `setUp`.
 
 ### 9.2 Integration coverage
 
-Twelve suites cover end-to-end flows against a locally deployed
+Thirteen suites cover end-to-end flows against a locally deployed
 `PoolManager`: single-hop and multi-hop swap shapes
 (`SpryRouterSingleTest`, `SpryRouterMultiTest`, `SpryRouterBranchTest`,
 `SwapShapeMatrixTest`), V4 hook surface (`SpryHookTest`,
 `HookDataForwardingTest`), Permit / Permit2 / multicall (`PermitSupportTest`,
 `Permit2SupportTest`), Quoter integration (`QuoterTest`), tier-from-
 tickSpacing dispatch (`TierDispatchTest`), native ETH + multi-pool
-isolation (`ParityTest`), and the PositionManager interop smoke test
-(`PositionManagerInteropTest`).
+isolation (`ParityTest`), the PositionManager interop smoke test for
+both full-range and concentrated positions (`PositionManagerInteropTest`),
+and gas-cost ceilings for the four primary swap paths
+(`GasRegressionTest`).
 
 ### 9.3 Scenario coverage
 
-Seventeen scenario suites simulate adversarial flows or asset shapes
+Eighteen scenario suites simulate adversarial flows or asset shapes
 the hook is supposed to neutralise. The most load-bearing ones:
 
 | Suite | What it pins |
 |---|---|
 | `IntegralPathIndependence.t.sol` | Same-block splitter receives strictly less output (paid more fee) than one big swap of the same total amount, once the trajectory crosses safeHigh. Finer splits cost more than coarser splits. Multi-block splits incur no penalty (the window reset works). |
-| `CumulativeFeeBehavior.t.sol` | Each of the three dispatch cases — Growth / Unwind / Flip — observed end-to-end through V4 swaps. Window reset + multi-pool isolation. |
+| `CumulativeFeeBehavior.t.sol` | Each of the three dispatch cases — Growth / Unwind / Flip — observed end-to-end through V4 swaps, on both the left (negative-cum) and right (positive-cum) sides, including deep UNWIND from alert→safe and danger→alert and a FLIP whose growth half traverses the alert ramp. Window reset + multi-pool isolation. |
+| `WindowLengthVariation.t.sol` | The lazy window-reset arithmetic at non-trivial `BLOCK_WINDOW` values (1, 6, 48): cum accumulates inside the window, resets exactly at `windowStart + BLOCK_WINDOW`, and not one block early. |
 | `SandwichAttack.t.sol` | Sandwich attacker's second leg pays a higher fee because the first leg already pushed the pool's cumulative. |
 | `FeeAccrualBenefit.t.sol` | An honest LP earns fees on their own position. A drive-by `add → remove` attacker cannot drain fees that accrued on someone else's position (per-owner V4 position salt). |
 | `JITLiquidity.t.sol` | A just-in-time LP cannot harvest fees that accrued before they joined. |
@@ -1050,23 +1060,33 @@ the hook is supposed to neutralise. The most load-bearing ones:
 
 ### 9.4 Invariant fuzz campaign
 
-`Invariants.t.sol` runs 256 invariant rounds × 500 random handler calls
-per round = **128 000 random operations**, picking from three actors and
-three operations (`swapExactIn`, `addLiquidity`, `removeLiquidity`) with
-bounded magnitudes. The handler swallows `revert`s so the campaign keeps
-moving even when a random call would normally fail. Across the run the
-following invariants hold without exception (0 violations recorded over
-the campaign):
+`Invariants.t.sol` runs each invariant for 256 rounds × 500 random
+handler calls = **128 000 random operations**, picking from three
+actors and four operations (`swapExactIn`, `addLiquidity`,
+`removeLiquidity`, `rollBlocks`) with bounded magnitudes. The
+`rollBlocks` op advances `block.number` so the campaign interleaves
+swaps with block advances and actually exercises the lazy
+window-reset branch. The handler swallows `revert`s so the campaign
+keeps moving even when a random call would normally fail. Across the
+run the following invariants hold without exception (0 violations):
 
 | Invariant | What it proves |
 |---|---|
 | **`poolLiquidityEqualsSumOfPositions`** | The pool's in-range liquidity reported by `StateLibrary` equals the sum of every actor's per-owner V4 position (seeder + Alice + Bob + Carol). The per-owner-salt LP model is never out of sync with the manager's view by even one wei. |
 | **`managerSolventWhileLiquidityLives`** | While the pool has any liquidity, the `PoolManager` holds non-zero balances of both currencies. Catches drain paths. |
+| **`cumulativeBoundedRealistically`** | The per-pool `signedCum` stays well below `int128.max` (`< 10^9`) under any handler sequence — a guard against a delta-computation or accumulation overflow that would corrupt fee dispatch. |
+| **`windowStartNeverInFuture`** | The lazy-reset logic never writes a `windowStart` past the current block. |
+
+`TwoPoolInvariants.t.sol` spawns two independent `InvariantHandler`
+instances against the same hook + manager but different token pairs
+(AB and BC, sharing token B) and re-asserts all four properties on
+each pool — so a cross-pool state-bleed (e.g. the hook keying
+`_poolWindow` by anything other than the `PoolId`) would surface as a
+violation on the "innocent" pool after activity on the "noisy" one.
 
 Additionally, the in-handler `swap` operation asserts $K_{\text{after}}
-\ge K_{\text{before}}$ on the virtual constant $K = L^2$, so 42 000
-random swaps did not produce a single case of $K$ decreasing across a
-swap.
+\ge K_{\text{before}}$ on the virtual constant $K = L^2$, so the random
+swaps never produced a single case of $K$ decreasing across a swap.
 
 ### 9.5 Fork testing
 

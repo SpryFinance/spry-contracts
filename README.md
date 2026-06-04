@@ -72,31 +72,36 @@ script/
 
 test/
 ├── unit/             6 suites    SmartFeeLib + integral-mode math +
-│                                  hook coverage + miner.
-├── integration/     12 suites    Router single + multi + branches,
+│                                  hook coverage (incl. poolWindow getter,
+│                                  cum saturation) + miner.
+├── integration/     13 suites    Router single + multi + branches,
 │                                  Permit, Permit2, Quoter,
-│                                  PositionManager interop, tier
-│                                  dispatch, swap-shape matrix, V4 hook
-│                                  surface.
-├── scenarios/       17 suites    Attack simulations: sandwich, JIT,
+│                                  PositionManager interop (full-range +
+│                                  concentrated), tier dispatch,
+│                                  swap-shape matrix, gas regression,
+│                                  V4 hook surface.
+├── scenarios/       18 suites    Attack simulations: sandwich, JIT,
 │                                  gas-grief, reentrancy, donation,
 │                                  recipient-is-self, first-mint
 │                                  inflation, asymmetric decimals,
-│                                  cumulative-fee behavior,
+│                                  cumulative-fee behavior (Growth/
+│                                  Unwind/Flip, left + right),
+│                                  multi-window-length,
 │                                  IntegralPathIndependence, …
-├── fuzz/             1 suite     Handler-driven stateful invariants
-│                                  (128k random ops, 0 violations).
+├── fuzz/             2 suites    Handler-driven stateful invariants —
+│                                  single-pool + two-pool (128k random
+│                                  ops per invariant, 0 violations).
 ├── fork/             2 suites    Live PoolManager smoke tests
 │                                  (skipped when FORK_RPC_URL unset).
 └── utils/                         LPHelper — per-owner-salt LP shim
                                    used by tests, mirroring
                                    PositionManager's fairness model.
 
-Total: 38 suites / 224 tests
+Total: 41 suites / 256 tests
 ```
 
-Production SLOC: **988**.
-Test SLOC: **5 403**.
+Production SLOC: **996**.
+Test SLOC: **6 293**.
 
 ## Build & test
 
@@ -158,10 +163,11 @@ SmartFee derivation operates on.
 
 ## Status
 
-- **224 unit + integration + scenario + invariant + fork tests
+- **256 unit + integration + scenario + invariant + fork tests
   passing**, ~100 % line and function coverage on every library;
-  invariants verified across 128 000 random handler operations with
-  zero violations across 256 fuzz runs.
+  the four single-pool and four two-pool invariants are each verified
+  across 128 000 random handler operations (256 rounds × 500 calls)
+  with zero violations.
 - **Not yet externally audited.** Do not deploy with material user
   funds until an independent audit is complete.
 - **No mainnet deployment.** Authoritative addresses, when they exist,

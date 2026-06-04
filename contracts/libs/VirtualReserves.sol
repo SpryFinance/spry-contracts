@@ -6,15 +6,21 @@ import {FullMath} from "v4-core/src/libraries/FullMath.sol";
 /// @title VirtualReserves
 /// @notice Converts a pool's current state (sqrtPriceX96 + in-range liquidity)
 ///         into the equivalent (reserve0, reserve1) pair that SmartFee's delta
-///         formula operates on. Under the protocol's full-range-only
-///         constraint, liquidity is uniform across the entire price range and
-///         the swap math reduces to the constant-product x*y=k at the current
-///         price.
-/// @dev    For a pool with uniform full-range liquidity L at sqrtPrice = sqrt(P):
+///         formula operates on. The pair describes the local constant-product
+///         x*y=k behaviour at the current price: a marginal swap against the
+///         in-range liquidity L moves price exactly as it would against a V2
+///         pool holding these virtual reserves.
+/// @dev    For in-range liquidity L at sqrtPrice = sqrt(P):
 ///           reserve0 = L / sqrt(P)  =  L * 2^96 / sqrtPriceX96
 ///           reserve1 = L * sqrt(P)  =  L * sqrtPriceX96 / 2^96
 ///         Both formulas use FullMath.mulDiv to handle the intermediate
 ///         256-bit overflow that occurs at extreme prices.
+///
+///         `L` is whatever the manager reports as in-range liquidity — equal
+///         to total liquidity for full-range pools (Spry's recommended
+///         configuration, on which the IL economics are derived), less for
+///         concentrated configurations. The formula is exact either way for
+///         the marginal swap behaviour at the current tick.
 library VirtualReserves {
     uint256 internal constant Q96 = 1 << 96;
 

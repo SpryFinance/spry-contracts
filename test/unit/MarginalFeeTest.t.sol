@@ -452,10 +452,11 @@ contract MarginalFeeTest is Test {
         //      ≤ 10 pips per evaluation across alert + danger.
         // 50 pips gives a 2x safety margin while remaining tight
         // enough (0.005% absolute) to catch a real refactor regression.
-        // Both code paths now compute the exp argument via the same
-        // direct-raw (b·d)/1000 form (see `SmartFeeLib._exp`), so the
-        // PRB-Math precision asymmetry that prompted a 250-pip
-        // tolerance in an earlier revision no longer applies.
+        // Both code paths compute the exp argument via the same
+        // direct-raw (b·d)/1000 form (see `SmartFeeLib._exp` and
+        // `_dangerArea`), so the danger-zone evaluations agree to within
+        // PRB-Math's own exp precision — no systematic offset between
+        // the point and integral APIs.
         uint256 diff = pointRate > marginal
             ? uint256(pointRate) - uint256(marginal)
             : uint256(marginal) - uint256(pointRate);

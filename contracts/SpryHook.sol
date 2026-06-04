@@ -18,9 +18,12 @@ import {SpryFeeParams} from "./libs/SpryFeeTypes.sol";
 /// @title SpryHook
 /// @notice V4 hook implementing Spry's tiered dynamic fee curve. On every
 ///         swap the hook reads the pool's current sqrtPriceX96 + liquidity,
-///         looks up the pool's tier from `key.fee & 0xFF`, asks SmartFeeLib
-///         what fee that tier's curve charges for this swap's delta, and
-///         returns the result as the LP-fee override.
+///         looks up the pool's tier from `key.tickSpacing`, computes the
+///         swap's signed per-mille delta, accumulates it into the pool's
+///         block-windowed cumulative tracker, asks SmartFeeLib for the
+///         path-independent marginal fee over the cumulative trajectory
+///         [cumBefore, cumAfter], and returns the result OR-ed with
+///         `LPFeeLibrary.OVERRIDE_FEE_FLAG`.
 ///
 ///         Five hardcoded tiers, dispatched from the pool's `tickSpacing`
 ///         field (matching Uniswap V3's fee-tier convention):
@@ -177,9 +180,12 @@ contract SpryHook is IHooks {
 
         uint24 dynamicFee = _computeCumulativeFee(cumBefore, cumAfter, params_);
 
-        // Save the new cumulative state (saturate to int128 bounds defensively;
-        // realistic cum magnitudes are bounded by ~50_000 in normal use, vastly
-        // below int128.max ≈ 1.7e38).
+        // Save the new cumulative state, saturating to int128 bounds
+        // defensively. Per-swap signedDelta is asymptotically bounded by
+        // ±1000 (constant-product reserve cap), so realistic |cum| stays
+        // O(10^4) per window — vastly below int128.max ≈ 1.7e38. The
+        // clamp catches state-corruption / hand-seeded edge cases only;
+        // it never fires under normal operation.
         if (cumAfter > type(int128).max) cumAfter = type(int128).max;
         else if (cumAfter < type(int128).min) cumAfter = type(int128).min;
         w.signedCum = int128(cumAfter);
@@ -194,8 +200,9 @@ contract SpryHook is IHooks {
 
     /// @dev Path-independent three-case fee dispatch. Thin wrapper over
     ///      `SmartFeeLib.marginalFee` — kept as an internal entry point so
-    ///      that future variants (different unwind treatment, multi-block
-    ///      smoothing, etc.) can be slotted in without touching `beforeSwap`.
+    ///      `beforeSwap` reads as a flat sequence of hook concerns
+    ///      (load, accumulate, dispatch, persist) rather than mixing
+    ///      the fee-curve detail into the hook body.
     function _computeCumulativeFee(
         int256 cumBefore,
         int256 cumAfter,

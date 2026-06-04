@@ -25,7 +25,10 @@ library SmartFeeLib {
     using SafeCast for *;
 
     /// @param sqrtPriceX96    pool's current price as Q64.96
-    /// @param liquidity       pool's in-range liquidity (full-range == total)
+    /// @param liquidity       pool's in-range liquidity (i.e. the L for the
+    ///                       positions whose tick range covers the current
+    ///                       tick — equal to total liquidity for full-range
+    ///                       pools, less for concentrated configurations).
     /// @param zeroForOne      true if swap is token0 -> token1
     /// @param amountSpecified V4 swap amountSpecified: negative = exactIn,
     ///                       positive = exactOut. Magnitude is the token amount.
@@ -52,11 +55,16 @@ library SmartFeeLib {
 
     /// @notice Computes the signed per-mille reserve-shift indicator
     ///         ("delta") for a swap, given pool state and swap params.
-    ///         Returned value:
+    ///         Returned value, expressed in thousandths of the relevant
+    ///         reserve:
     ///           positive  if the swap takes token0 out of the pool
-    ///                     (price moves toward "more token0 needed")
+    ///                     (pool ends with less token0, more token1 —
+    ///                     spot price P = R1/R0 moves UP)
     ///           negative  if the swap takes token1 out of the pool
-    ///           0         if reserves or amount are zero
+    ///                     (price moves DOWN)
+    ///           0         if either reserve is zero, the amount is
+    ///                     zero, or the derived output truncates to
+    ///                     zero against the reserve denominator.
     /// @dev Used by SpryHook to feed the per-pool cumulative tracker
     ///      (the cumulative is the running sum of these signed deltas
     ///      within a block window).
@@ -200,22 +208,33 @@ library SmartFeeLib {
     // Integral / marginal-fee mode (path-independent dispatch)
     //
     // SpryHook charges a marginal fee that is independent of how a same-
-    // trajectory cumulative move is sliced into individual swaps. The
-    // marginal fee is the time-average of the underlying piecewise fee curve
-    // over the cumulative interval the swap moves through:
+    // trajectory cumulative move is sliced into individual swaps. Three
+    // cases:
     //
-    //       marginal_fee = ∫_{cumBefore}^{cumAfter} feeRate(x) dx
-    //                      ───────────────────────────────────────
-    //                              cumAfter − cumBefore
+    //   GROWTH — same-sign move with |cumAfter| > |cumBefore|. The
+    //   marginal is the integral average of the curve over the cumulative
+    //   interval the swap moves through:
     //
-    // The integral telescopes (F(c_n) − F(c_0) regardless of any intermediate
-    // splits), so splitting a same-side same-direction swap into N pieces
-    // costs the exact same total fee as one big swap — closing the sub-
-    // window splitting loophole an end-rate rule would leave open.
+    //          marginal = ∫_{|cumBefore|}^{|cumAfter|} feeRate(x) dx
+    //                     ─────────────────────────────────────────
+    //                              |cumAfter| − |cumBefore|
     //
-    // The SIGN-FLIP half of a swap (cumulative crossing zero) is charged at
-    // `safeFee` for the unwind portion — that side is a benefit to LPs
-    // (pool brought toward neutral), not a cost being amortized.
+    //   The integral telescopes (F(c_n) − F(c_0) regardless of any
+    //   intermediate splits), so splitting a same-direction swap into N
+    //   pieces costs the exact same total fee as one big swap — closing
+    //   the sub-window splitting loophole an end-rate rule would leave
+    //   open.
+    //
+    //   UNWIND — same-sign move with |cumAfter| ≤ |cumBefore|. The pool
+    //   is being moved toward neutral, so the LP gets paid the tier's
+    //   base rate (`safeFee`) regardless of where on the curve the
+    //   pre-swap cum sat.
+    //
+    //   FLIP — opposite strict signs. The swap crosses zero. The unwind
+    //   half [cumBefore, 0] is charged at `safeFee` (same reasoning as
+    //   UNWIND); the growth half [0, cumAfter] is charged at the
+    //   integral average over that subrange. The two halves are
+    //   weight-averaged by their respective magnitudes.
     // =====================================================================
 
     /// @notice Path-independent average fee for a swap that shifts the
@@ -332,8 +351,10 @@ library SmartFeeLib {
     ///
     ///        F(y) = (a·y²/2 + 1000·b·y) / 1e6
     ///
-    ///      Returns F(y1) − F(y0). The fee curve is non-negative across the
-    ///      alert zone in both tiers, so the integral is always ≥ 0.
+    ///      Returns F(y1) − F(y0). The fee curve is non-negative across
+    ///      the alert zone on both sides (every tier's coefficients are
+    ///      picked so the linear ramp evaluates to a fee in [safeFee,
+    ///      alertEdgeFee]), so the integral is always ≥ 0.
     function _alertArea(uint256 y0, uint256 y1, SpryFeeParams memory p, bool right)
         private
         pure
