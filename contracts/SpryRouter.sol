@@ -24,8 +24,13 @@ import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 /// @notice Periphery swap router for Spry pools. Exposes a compact,
 ///         ergonomic API (exact-in / exact-out single-hop, unbounded
 ///         multi-hop), slippage and deadline guards, and first-class
-///         native-ETH support. Every external call translates into a
-///         single PoolManager.unlock callback.
+///         native-ETH support. Each swap entry point opens exactly one
+///         `PoolManager.unlock` and resolves all deltas inside the
+///         resulting `unlockCallback`. The non-swap entry points —
+///         `selfPermit`, the inherited Permit2Forwarder `permit` /
+///         `permitBatch`, `multicall`, and the `receive()` fallback —
+///         open no unlock; `multicall` simply DELEGATECALLs into the
+///         swap methods, each of which opens its own.
 /// @dev    Liquidity management (add / remove / increase / decrease) is
 ///         delegated to Uniswap's canonical `PositionManager` from
 ///         v4-periphery — it mints an ERC721 NFT per LP position with
@@ -245,6 +250,19 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     // Single-hop user entry points
     // ---------------------------------------------------------------------
 
+    /// @notice Swap exactly `amountIn` of the input token for as much of the
+    ///         output token as the pool gives, reverting if the realised
+    ///         output is below `amountOutMin`. Input is pulled from
+    ///         `msg.sender` via the token's own allowance; native ETH is
+    ///         supplied as `msg.value` and any unspent remainder refunded.
+    /// @param key          the Spry pool to swap against
+    /// @param zeroForOne   true = sell currency0 for currency1
+    /// @param amountIn     exact input amount (must fit in int256)
+    /// @param amountOutMin slippage floor on the output
+    /// @param recipient    receives the output (must not be the router)
+    /// @param deadline     reverts with `Expired` past this timestamp
+    /// @param hookData     opaque bytes forwarded to the pool's hook
+    /// @return amountOut   the output amount delivered to `recipient`
     function swapExactInputSingle(
         PoolKey calldata key,
         bool zeroForOne,
@@ -276,6 +294,19 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
         _refundExcessETH(priorBal);
     }
 
+    /// @notice Swap as little of the input token as needed to receive exactly
+    ///         `amountOut` of the output token, reverting if the required
+    ///         input exceeds `amountInMax`. Input is pulled from `msg.sender`
+    ///         via the token's own allowance; native ETH is supplied as
+    ///         `msg.value` and any unspent remainder refunded.
+    /// @param key         the Spry pool to swap against
+    /// @param zeroForOne  true = sell currency0 for currency1
+    /// @param amountOut   exact output amount to deliver (must fit in int256)
+    /// @param amountInMax slippage ceiling on the input the user pays
+    /// @param recipient   receives the output (must not be the router)
+    /// @param deadline    reverts with `Expired` past this timestamp
+    /// @param hookData    opaque bytes forwarded to the pool's hook
+    /// @return amountIn   the input amount actually pulled from `msg.sender`
     function swapExactOutputSingle(
         PoolKey calldata key,
         bool zeroForOne,
@@ -534,6 +565,16 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     // Unlock callback — tagged dispatch
     // ---------------------------------------------------------------------
 
+    /// @notice The only entry point `PoolManager` calls back into during an
+    ///         `unlock`. Decodes the tagged-union payload one of this
+    ///         router's swap methods encoded, runs the corresponding
+    ///         executor, and returns its ABI-encoded result back up the
+    ///         unlock stack.
+    /// @dev    Guarded by `onlyPoolManager`: only the manager mid-unlock can
+    ///         reach it, so an external caller cannot forge a payload to
+    ///         move settled funds. The tag is exhaustively matched; any
+    ///         unrecognized tag reverts with `InvalidCallbackKind` rather
+    ///         than silently no-op'ing.
     function unlockCallback(bytes calldata raw) external onlyPoolManager returns (bytes memory) {
         (uint8 tag, bytes memory payload) = abi.decode(raw, (uint8, bytes));
 
