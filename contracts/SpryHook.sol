@@ -133,7 +133,7 @@ contract SpryHook is IHooks {
     //              The swap pushes pool further from neutral; charge the
     //              average curve rate over the path traversed.
     //
-    //   UNWIND   |cumAfter| < |cumBefore|, same sign:
+    //   UNWIND   |cumAfter| ≤ |cumBefore|, same sign:
     //              fee = safeFee
     //              The swap brings the pool toward neutral; charge the
     //              tier's base rate (LP still gets paid, no MEV penalty).

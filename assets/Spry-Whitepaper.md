@@ -727,9 +727,12 @@ the operator's responsibility — `SpryRouter` does not initialise pools
 
 ### 5.3 Virtual reserves
 
-`SmartFeeLib.getDynamicFee` operates on the V2-style virtual reserves
-$(R_0, R_1)$. `VirtualReserves.fromState` derives them from V4 pool state
-under the full-range-uniform-liquidity assumption (Section 2.4):
+`SmartFeeLib.computeSignedDelta` — the function the hook calls on every
+swap — operates on the V2-style virtual reserves $(R_0, R_1)$.
+`VirtualReserves.fromState` derives them from V4 pool state using the
+pool's in-range liquidity $L$; under the full-range configuration Spry's
+IL economics assume (Section 2.4), $L$ is the pool's total liquidity and
+the reserves describe the whole curve:
 
 $$
 R_0 = \frac{L \cdot 2^{96}}{\sqrt{P}_{X96}}, \qquad
@@ -772,11 +775,12 @@ function _settle(
         if (usePermit2) revert Permit2NativeUnsupported();
         POOL_MANAGER.settle{value: amount}();           // native ETH
     } else {
-        address token = Currency.unwrap(currency);
+        address tokenAddr = Currency.unwrap(currency);
         if (usePermit2) {
-            PERMIT2.transferFrom(payer, address(POOL_MANAGER), uint160(amount), token);
+            if (amount > type(uint160).max) revert Permit2AmountOverflow();
+            permit2.transferFrom(payer, address(POOL_MANAGER), uint160(amount), tokenAddr);
         } else {
-            ERC20(token).safeTransferFrom(payer, address(POOL_MANAGER), amount);
+            ERC20(tokenAddr).safeTransferFrom(payer, address(POOL_MANAGER), amount);
         }
         POOL_MANAGER.settle();
     }
@@ -985,9 +989,10 @@ pre-deploy checklist.
 ## 9. Testing methodology
 
 The repository ships with **256 tests across 41 suites**, all passing
-under the same Foundry profile that `forge coverage` uses (no `via_ir`,
-optimizer off) so coverage measurements are accurate. The suites are
-grouped under `test/unit/` (6), `test/integration/` (13),
+under the default Foundry profile (no `via_ir`); `forge coverage`
+disables the optimizer automatically for accurate source-line
+instrumentation, so coverage measurements are trustworthy. The suites
+are grouped under `test/unit/` (6), `test/integration/` (13),
 `test/scenarios/` (18), `test/fuzz/` (2), and `test/fork/` (2).
 
 ### 9.1 Unit coverage of the algorithm

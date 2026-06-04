@@ -84,10 +84,14 @@ library SmartFeeLib {
         return _computeDelta(reserve0, reserve1, amount0Out, amount1Out);
     }
 
-    /// @notice Public-equivalent helper: given a delta value already computed
-    ///         externally, return the fee. Used by SpryHook's cumulative
-    ///         path to evaluate the curve at the running cum value rather
-    ///         than at the per-swap delta.
+    /// @notice Point-evaluation of the fee curve at a single delta value
+    ///         supplied directly by the caller (rather than derived from a
+    ///         swap). Returns the curve's value at that one point.
+    /// @dev    This is the point-rate the integral-mode `marginalFee`
+    ///         integrates over an interval; the hook itself prices swaps
+    ///         via `marginalFee`, not this function. Exposed for tests and
+    ///         off-chain tooling (e.g. plotting the curve, sanity-checking
+    ///         a tier's coefficients at a known delta).
     function feeForDelta(int256 delta, SpryFeeParams memory p)
         internal
         pure
