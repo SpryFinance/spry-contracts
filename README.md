@@ -11,8 +11,11 @@ already shifted it. Small swaps pay the tier's base rate (1 – 100 bps);
 arbitrage-sized swaps pay up to 9.9 %. The excess accrues to LPs through
 V4's standard fee channel.
 
-The economic mechanism is described in detail in
-[`assets/Spry-Whitepaper.md`](assets/Spry-Whitepaper.md).
+The economic mechanism is described in detail in the whitepaper, available
+as a print-ready **[PDF](assets/Spry-Whitepaper.pdf)** (with figures) or as
+**[Markdown](assets/Spry-Whitepaper.md)** (renders inline on GitHub). Both
+cover the same design; the Markdown is the longer, reference-grade version
+and the PDF is a concise, figure-driven companion.
 
 ## Headline properties
 
