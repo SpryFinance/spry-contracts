@@ -167,9 +167,7 @@ is worth $x_i P_f + y_i$. The impermanent loss is the relative shortfall of
 the pool versus buy-and-hold:
 
 $$
-\mathrm{IL}(\delta) = \frac{V(P_f)}{V_{\mathrm{HODL}}(P_f)} - 1
-= \frac{2\sqrt{\delta + 1}}{\delta + 2} - 1
-\tag{IL}
+\mathrm{IL}(\delta) = \frac{V(P_f)}{V_{\mathrm{HODL}}(P_f)} - 1 = \frac{2\sqrt{\delta + 1}}{\delta + 2} - 1 \quad (\mathrm{IL})
 $$
 
 The function $\mathrm{IL}(\delta)$ has the following properties:
@@ -263,10 +261,10 @@ pool's price. Concretely, in thousandths,
 
 $$
 \delta = \begin{cases}
-\dfrac{1000 \cdot \Delta x_{\mathrm{out}}}{R_x} & \text{if the swap takes token 0 out} \\[8pt]
+\dfrac{1000 \cdot \Delta x_{\mathrm{out}}}{R_x} & \text{if the swap takes token 0 out} \\
 -\dfrac{1000 \cdot \Delta y_{\mathrm{out}}}{R_y + \Delta y_{\mathrm{out}}} & \text{if the swap takes token 1 out}
 \end{cases}
-\tag{$\delta$}
+\quad (\delta)
 $$
 
 where $R_x, R_y$ are the pool's virtual reserves immediately before the swap.
@@ -516,29 +514,25 @@ a zero window would degenerate the cumulative tracker into a no-op
 Given (cumBefore, cumAfter) the hook dispatches to
 `SmartFeeLib.marginalFee(cumBefore, cumAfter, p)`. The case analysis is:
 
-- **GROWTH** — same sign and $|\text{after}| > |\text{before}|$. The
-  swap pushes the pool further from neutral; the fee is the
-  *integral average* of the curve over the cumulative interval:
+**GROWTH** — same sign and $|\text{after}| > |\text{before}|$. The swap
+pushes the pool further from neutral; the fee is the *integral average*
+of the curve over the cumulative interval:
 
-  $$
-  \text{marginal} = \frac{1}{|\text{after}| - |\text{before}|}
-  \int_{|\text{before}|}^{|\text{after}|}\!\text{fee}(x)\,dx
-  $$
+$$
+\text{marginal} = \frac{1}{|\text{after}| - |\text{before}|} \int_{|\text{before}|}^{|\text{after}|} \text{fee}(x)\,dx
+$$
 
-- **UNWIND** — same sign and $|\text{after}| \le |\text{before}|$. The
-  swap brings the pool toward neutral; the fee is the tier's
-  `safeFee`. LP still gets paid; the unwinder is not penalised for
-  fixing the pool.
+**UNWIND** — same sign and $|\text{after}| \le |\text{before}|$. The swap
+brings the pool toward neutral; the fee is the tier's `safeFee`. LP
+still gets paid; the unwinder is not penalised for fixing the pool.
 
-- **FLIP** — opposite strict signs. The swap crosses zero; the fee
-  is the weighted average over the unwind half (charged at
-  `safeFee`) and the growth half (charged at the integral over
-  $[0, |\text{after}|]$):
+**FLIP** — opposite strict signs. The swap crosses zero; the fee is the
+weighted average over the unwind half (charged at `safeFee`) and the
+growth half (charged at the integral over $[0, |\text{after}|]$):
 
-  $$
-  \text{marginal}
-  = \frac{\text{safeFee}\cdot|\text{before}| + \int_0^{|\text{after}|}\!\text{fee}(x)\,dx}{|\text{before}|+|\text{after}|}
-  $$
+$$
+\text{marginal} = \frac{\text{safeFee}\cdot|\text{before}| + \int_0^{|\text{after}|} \text{fee}(x)\,dx}{|\text{before}|+|\text{after}|}
+$$
 
 The integral is evaluated piecewise across the four zones using the
 antiderivatives:
