@@ -299,12 +299,12 @@ $|\mathrm{IL}'|$ for that asset class. Using the BLUE-CHIP tier
 
 | Zone | BLUE-CHIP $\delta$ range (per-mille) | Shape | Fee at endpoints |
 |---|---|---|---|
-| **Safe** | $[-250,\; 334]$ | constant | $\text{fee} = 3\,000$ pips (0.30 %) |
-| **Alert left** | $[-500,\; -250)$ | linear ramp | $3\,000 \to 20\,000$ pips |
-| **Alert right** | $(334,\; 1000]$ | linear ramp | $3\,000 \to 20\,000$ pips |
-| **Danger left** | $[-1000,\; -500)$ | SD59x18 exponential | $20\,000 \to 50\,000$ pips |
-| **Danger right** | $(1000,\; 5000]$ | SD59x18 exponential | $20\,000 \to 50\,000$ pips |
-| **Cap** | $\delta < -1000$ or $\delta > 5000$ | constant | $55\,000$ pips (5.5 %) |
+| **Safe** | [-250, 334] | constant | 3,000 pips (0.30 %) |
+| **Alert left** | [-500, -250) | linear ramp | 3,000 → 20,000 pips |
+| **Alert right** | (334, 1000] | linear ramp | 3,000 → 20,000 pips |
+| **Danger left** | [-1000, -500) | SD59x18 exponential | 20,000 → 50,000 pips |
+| **Danger right** | (1000, 5000] | SD59x18 exponential | 20,000 → 50,000 pips |
+| **Cap** | δ < -1000 or δ > 5000 | constant | 55,000 pips (5.5 %) |
 
 The asymmetric upper boundary of the safe zone (`+334` rather than `+250`)
 reflects the IL function's asymmetry — an LP loses less from a 33 % price
@@ -316,30 +316,30 @@ asymmetry; the structural shape (safe → alert → danger → cap, with linear
 ### 3.3 Fee curve
 
 Inside each zone the fee is expressed directly in **V4 pips**
-($1\,000\,000 = 100\%$); no intermediate unit conversion is required.
+(1,000,000 = 100%); no intermediate unit conversion is required.
 Using the BLUE-CHIP coefficients hard-coded in `SpryHook._tierBlueChip()`:
 
-**Safe zone** ($-250 \le \delta \le 334$):
+**Safe zone** ($\delta \in [-250, 334]$):
 
 $$
 \text{fee}(\delta) = \text{safeFee} = 3\,000 \text{ pips}
 $$
 
-**Alert left** ($-500 \le \delta < -250$):
+**Alert left** ($\delta \in [-500, -250)$):
 
 $$
 \text{fee}(\delta) = \frac{a_L \cdot \delta + 1000 \cdot b_L}{10^{6}}
 \qquad (a_L = -68\,000\,000,\; b_L = -14\,000\,000)
 $$
 
-**Alert right** ($334 < \delta \le 1000$):
+**Alert right** ($\delta \in (334, 1000]$):
 
 $$
 \text{fee}(\delta) = \frac{a_R \cdot \delta + 1000 \cdot b_R}{10^{6}}
 \qquad (a_R = 25\,525\,525,\; b_R = -5\,525\,525)
 $$
 
-**Danger left** ($-1000 \le \delta < -500$):
+**Danger left** ($\delta \in [-1000, -500)$):
 
 $$
 \text{fee}(\delta) = \frac{a_L^{\text{exp}} \cdot \exp\!\bigl(b_L^{\text{exp}} \cdot \delta / 1000\bigr)}{10^{36}}
@@ -348,7 +348,7 @@ $$
 with $a_L^{\text{exp}} \approx 8 \cdot 10^{21}$ and $b_L^{\text{exp}} \approx
 -1.83 \cdot 10^{18}$ (raw SD59x18).
 
-**Danger right** ($1000 < \delta \le 5000$):
+**Danger right** ($\delta \in (1000, 5000]$):
 
 $$
 \text{fee}(\delta) = \frac{a_R^{\text{exp}} \cdot \exp\!\bigl(b_R^{\text{exp}} \cdot \delta / 1000\bigr)}{10^{36}}
@@ -366,8 +366,8 @@ $$
 The coefficients are chosen so the curve is continuous at every
 safe ↔ alert and alert ↔ danger boundary. At $\delta = \pm 500$ both the
 alert linear formula and the danger exponential formula evaluate to
-$20\,000$ pips; at $\delta = -250$ and $\delta = +334$ the alert formulas
-evaluate to $3\,000$ pips matching the safe zone. The danger-zone
+20,000 pips; at $\delta = -250$ and $\delta = +334$ the alert formulas
+evaluate to 3,000 pips matching the safe zone. The danger-zone
 exponentials use PRB-Math's `SD59x18` fixed-point exponential [8] for
 precision; the safe, alert, and cap zones are pure integer arithmetic.
 
@@ -376,8 +376,8 @@ BLUE-CHIP, VOLATILE, EXOTIC — is enumerated in §3.7 below.
 
 ### 3.4 V4 dynamic-fee return channel
 
-Uniswap V4 expresses dynamic fees in **pips** (millionths): $1\,000\,000 =
-100\%$, $3\,000 = 0.30\%$, $55\,000 = 5.5\%$. Spry computes everything
+Uniswap V4 expresses dynamic fees in **pips** (millionths): 1,000,000 =
+100%, 3,000 = 0.30%, 55,000 = 5.5%. Spry computes everything
 end-to-end in pips, so no scaling is needed before returning the value.
 
 The hook returns the fee with `LPFeeLibrary.OVERRIDE_FEE_FLAG = 0x400000` ORed
@@ -412,13 +412,13 @@ $$
 \delta = \frac{1000 \cdot 5 \cdot 10^{21}}{10^{22}} = +500
 $$
 
-In a fresh block (cumBefore $= 0$), `marginalFee(0, 500, p)` integrates
-the BLUE-CHIP curve over $[0, 500]$: the safe zone contributes
-$\text{safeFee} \cdot 334 = 1\,002\,000$ pips·delta, the alert ramp from
-$334$ to $500$ contributes $\approx 849\,690$ pips·delta, so the marginal
-average is roughly $1\,852\,000 / 500 \approx 3\,703$ pips — well below
-the point-evaluated rate at $\delta = 500$ (which is $\approx 7\,237$
-pips) because most of the path was still in the safe zone.
+In a fresh block (cumBefore = 0), `marginalFee(0, 500, p)` integrates
+the BLUE-CHIP curve over [0, 500]: the safe zone contributes
+safeFee · 334 = 1,002,000 pips·delta, the alert ramp from 334 to 500
+contributes ≈ 849,690 pips·delta, so the marginal average is roughly
+1,852,000 / 500 ≈ 3,703 pips — well below the point-evaluated rate at
+δ = 500 (which is ≈ 7,237 pips) because most of the path was still in
+the safe zone.
 
 A swap of the same magnitude in the opposite direction, asking for
 $\Delta y_{\mathrm{out}} = 5 \cdot 10^{21}$ of the token-1 reserve,
@@ -733,13 +733,13 @@ R_1 = \frac{L \cdot \sqrt{P}_{X96}}{2^{96}}
 $$
 
 Both numerators use `FullMath.mulDiv` to handle the intermediate 256-bit
-overflow that occurs at extreme prices (the product
-$L \cdot \sqrt{P}_{X96}$ can exceed $2^{256}$ when $L$ is near the
-`uint128` limit and $\sqrt{P}_{X96}$ is near the `uint160` limit). The
-identity $R_0 \cdot R_1 = L^2 = k$ holds exactly modulo rounding, which is
-what gives us "V2 economics" — the swap math the pool actually runs on
-$(\sqrt{P}_{X96}, L)$ is mathematically equivalent to a V2 pool on
-$(R_0, R_1)$ when liquidity is uniform across the full range.
+overflow that occurs at extreme prices: the product of L and
+`sqrtPriceX96` can exceed 2²⁵⁶ when L is near the `uint128` limit and
+`sqrtPriceX96` is near the `uint160` limit. The identity R₀·R₁ = L² = k
+holds exactly modulo rounding, which is what gives us "V2 economics" —
+the swap math the pool actually runs on (`sqrtPriceX96`, L) is
+mathematically equivalent to a V2 pool on (R₀, R₁) when liquidity is
+uniform across the full range.
 
 ### 5.4 Reentrancy
 
@@ -875,7 +875,7 @@ PositionManager when the position opens. V4 keys per-position fee
 accounting by
 
 $$
-\mathrm{positionKey} = \mathrm{keccak256}\bigl(\mathrm{positionManagerAddress},\, \mathrm{tickLower},\, \mathrm{tickUpper},\, \mathrm{salt}\bigr)
+\mathrm{positionKey} = \mathrm{keccak256}\bigl(\mathrm{positionManagerAddress}, \mathrm{tickLower}, \mathrm{tickUpper}, \mathrm{salt}\bigr)
 $$
 
 with `salt = bytes32(tokenId)` set by PositionManager. The result: every
@@ -1002,8 +1002,8 @@ behavioral case (Growth / Unwind / Flip), each per-zone integral
 (safe / alert / danger / cap), boundary stitching across zones, the
 FLIP weighted-average formula at extreme magnitude imbalance (tiny
 unwind / huge growth and its inverse), and property-based fuzz tests
-covering path-independence within the theoretical $2 \cdot |I| + 3
-\cdot N$ truncation bound plus the `feeForDelta` ↔ `marginalFee`
+covering path-independence within the theoretical 2·|I| + 3·N
+truncation bound plus the `feeForDelta` ↔ `marginalFee`
 agreement (≤ 50 pips across the whole curve).
 
 `AllTiersMarginalFeeTest.t.sol` (6 tests) re-runs the integral-mode
