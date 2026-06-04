@@ -29,7 +29,7 @@ three libraries — deployed against the canonical Uniswap V4 `PoolManager`.
 Liquidity provision goes through Uniswap's canonical V4 `PositionManager`
 (per-owner V4 position salts give correct pro-rata fee accounting without
 Spry maintaining its own ledger). Pools operate in full-range mode so the
-underlying swap math reduces to the constant-product $x \cdot y = k$ at the
+underlying swap math reduces to the constant-product $`x \cdot y = k`$ at the
 current price, preserving uniform-liquidity economics while inheriting V4's
 native ETH, flash-accounting multi-hop, and audited swap engine.
 
@@ -106,77 +106,77 @@ documents the testing methodology and reports the empirical results. Section
 
 ### 2.1 Constant Product Market Maker
 
-A CPMM pool holds two assets $X$ and $Y$ with reserves $x, y \in \mathbb{R}_{>0}$.
+A CPMM pool holds two assets $`X`$ and $`Y`$ with reserves $`x, y \in \mathbb{R}_{>0}`$.
 The invariant maintained across swaps is
 
 $$
 x \cdot y = k
 $$
 
-for some constant $k$ that depends on the deposited liquidity. The spot price
-of asset $X$ in units of $Y$ is the partial derivative
+for some constant $`k`$ that depends on the deposited liquidity. The spot price
+of asset $`X`$ in units of $`Y`$ is the partial derivative
 
 $$
 P = -\frac{dy}{dx} = \frac{y}{x}
 $$
 
-A trade in which the taker deposits $\Delta y$ of $Y$ to receive $\Delta x$ of
-$X$ must preserve the invariant net of fees. With proportional fee
-$\gamma \in [0, 1)$ paid into the pool, the post-trade reserves are
+A trade in which the taker deposits $`\Delta y`$ of $`Y`$ to receive $`\Delta x`$ of
+$`X`$ must preserve the invariant net of fees. With proportional fee
+$`\gamma \in [0, 1)`$ paid into the pool, the post-trade reserves are
 
 $$
 (x - \Delta x) \cdot \left(y + (1 - \gamma)\, \Delta y\right) = k
 $$
 
-so $\Delta x = \tfrac{x \cdot (1 - \gamma)\, \Delta y}{y + (1 - \gamma)\, \Delta y}$.
-The fee fraction $\gamma$ is retained in the pool, slightly increasing $k$
+so $`\Delta x = \tfrac{x \cdot (1 - \gamma)\, \Delta y}{y + (1 - \gamma)\, \Delta y}`$.
+The fee fraction $`\gamma`$ is retained in the pool, slightly increasing $`k`$
 over time.
 
 ### 2.2 Liquidity and pool value
 
 Define the **liquidity** of a CPMM pool as the geometric mean of its reserves,
-$L = \sqrt{x \cdot y} = \sqrt{k}$. Then the reserves as a function of the spot
-price $P$ are
+$`L = \sqrt{x \cdot y} = \sqrt{k}`$. Then the reserves as a function of the spot
+price $`P`$ are
 
 $$
 x = \frac{L}{\sqrt{P}}, \qquad y = L \sqrt{P}
 $$
 
-and the **value** of the LP's pool position, denominated in $Y$, is
+and the **value** of the LP's pool position, denominated in $`Y`$, is
 
 $$
 V(P) = x \cdot P + y = 2 L \sqrt{P}
 $$
 
 This square-root profile is the source of impermanent loss: the LP's position
-value grows like $\sqrt{P}$ while a buy-and-hold portfolio of the original
-$(x_i, y_i)$ grows linearly in $P$.
+value grows like $`\sqrt{P}`$ while a buy-and-hold portfolio of the original
+$`(x_i, y_i)`$ grows linearly in $`P`$.
 
 ### 2.3 Impermanent loss
 
-Let $P_i, P_f$ be the pre- and post-price of the pool over a holding period,
-and let $\delta$ denote the relative price change:
+Let $`P_i, P_f`$ be the pre- and post-price of the pool over a holding period,
+and let $`\delta`$ denote the relative price change:
 
 $$
 \delta = \frac{P_f}{P_i} - 1, \qquad \delta \in (-1, \infty)
 $$
 
-The LP's pool position at the new price is worth $V(P_f) = 2 L \sqrt{P_f}$.
-A reference buy-and-hold portfolio of the same initial reserves $(x_i, y_i)$
-is worth $x_i P_f + y_i$. The impermanent loss is the relative shortfall of
+The LP's pool position at the new price is worth $`V(P_f) = 2 L \sqrt{P_f}`$.
+A reference buy-and-hold portfolio of the same initial reserves $`(x_i, y_i)`$
+is worth $`x_i P_f + y_i`$. The impermanent loss is the relative shortfall of
 the pool versus buy-and-hold:
 
 $$
 \mathrm{IL}(\delta) = \frac{V(P_f)}{V_{\mathrm{HODL}}(P_f)} - 1 = \frac{2\sqrt{\delta + 1}}{\delta + 2} - 1 \quad (\mathrm{IL})
 $$
 
-The function $\mathrm{IL}(\delta)$ has the following properties:
+The function $`\mathrm{IL}(\delta)`$ has the following properties:
 
-- $\mathrm{IL}(0) = 0$ — no price change, no loss.
-- $\mathrm{IL}(\delta) \le 0$ for all $\delta \neq 0$, with equality only at zero.
-- $\mathrm{IL}(\delta) \to -1$ as $\delta \to -1$ (one reserve drains to zero).
-- $\mathrm{IL}(\delta) \to 0$ from below as $\delta \to \infty$.
-- The slope $|\mathrm{IL}'(\delta)|$ is small near zero and grows as $|\delta|$
+- $`\mathrm{IL}(0) = 0`$ — no price change, no loss.
+- $`\mathrm{IL}(\delta) \le 0`$ for all $`\delta \neq 0`$, with equality only at zero.
+- $`\mathrm{IL}(\delta) \to -1`$ as $`\delta \to -1`$ (one reserve drains to zero).
+- $`\mathrm{IL}(\delta) \to 0`$ from below as $`\delta \to \infty`$.
+- The slope $`|\mathrm{IL}'(\delta)|`$ is small near zero and grows as $`|\delta|`$
   grows, asymmetrically (the left side is steeper than the right).
 
 It is the **slope** of this function — not its absolute value — that
@@ -246,7 +246,7 @@ only**: every position is minted with `tickLower = TickMath.minUsableTick`
 and `tickUpper = TickMath.maxUsableTick` for the pool's tick spacing. Under
 that constraint liquidity is uniform across the entire price range and the
 pool behaves identically to a Uniswap V2 pair, expressed in V4's
-$\sqrt{P} \cdot 2^{96}$ coordinates rather than reserve coordinates. We
+$`\sqrt{P} \cdot 2^{96}`$ coordinates rather than reserve coordinates. We
 exploit this equivalence in Section 5.3.
 
 ---
@@ -256,7 +256,7 @@ exploit this equivalence in Section 5.3.
 ### 3.1 The price delta
 
 For every prospective swap we define the **price-shift parameter**
-$\delta \in \mathbb{Q}$ as a scaled measure of how much the swap moves the
+$`\delta \in \mathbb{Q}`$ as a scaled measure of how much the swap moves the
 pool's price. Concretely, in thousandths,
 
 $$
@@ -267,37 +267,37 @@ $$
 \quad (\delta)
 $$
 
-where $R_x, R_y$ are the pool's virtual reserves immediately before the swap.
-$\delta = +1000$ corresponds to a 100 % growth in the token-0 reserve; $\delta
-= -500$ corresponds to draining 50 % of the token-1 reserve. The two cases
+where $`R_x, R_y`$ are the pool's virtual reserves immediately before the swap.
+$`\delta = +1000`$ corresponds to a 100 % growth in the token-0 reserve; $`\delta
+= -500`$ corresponds to draining 50 % of the token-1 reserve. The two cases
 are algebraically equivalent to the relative price change in equation (IL),
 re-expressed in terms of the swap amount and the reserve being shrunk; the
 direct form is numerically robust at any reserve ratio.
 
-For exact-input swaps (where the taker specifies $\Delta x_{\mathrm{in}}$ or
-$\Delta y_{\mathrm{in}}$ rather than the output amount) we first compute the
+For exact-input swaps (where the taker specifies $`\Delta x_{\mathrm{in}}`$ or
+$`\Delta y_{\mathrm{in}}`$ rather than the output amount) we first compute the
 no-fee output using the CPMM formula
 
 $$
 \Delta y_{\mathrm{out}} = \frac{\Delta x_{\mathrm{in}} \cdot R_y}{R_x + \Delta x_{\mathrm{in}}}
 $$
 
-and then apply formula $(\delta)$ to the implied output. The fee computed this
+and then apply formula $`(\delta)`$ to the implied output. The fee computed this
 way slightly over-estimates the post-fee price shift, which is conservative
 in the LP's favour — the actual price moves slightly less than the
-no-fee-computed $\delta$ because the fee is retained in the pool — so charging
+no-fee-computed $`\delta`$ because the fee is retained in the pool — so charging
 based on the no-fee delta means the LP is over-protected by at most one fee
 tier.
 
 ### 3.2 Zone partition
 
-The IL function is locally flat near $\delta = 0$ and steepens
-asymmetrically as $|\delta|$ grows. Every tier's curve partitions the real
+The IL function is locally flat near $`\delta = 0`$ and steepens
+asymmetrically as $`|\delta|`$ grows. Every tier's curve partitions the real
 line into **four zones** whose endpoints lie at the inflection points of
-$|\mathrm{IL}'|$ for that asset class. Using the BLUE-CHIP tier
+$`|\mathrm{IL}'|`$ for that asset class. Using the BLUE-CHIP tier
 (`tickSpacing = 60`) as the canonical example:
 
-| Zone | BLUE-CHIP $\delta$ range (per-mille) | Shape | Fee at endpoints |
+| Zone | BLUE-CHIP $`\delta`$ range (per-mille) | Shape | Fee at endpoints |
 |---|---|---|---|
 | **Safe** | [-250, 334] | constant | 3,000 pips (0.30 %) |
 | **Alert left** | [-500, -250) | linear ramp | 3,000 → 20,000 pips |
@@ -309,7 +309,7 @@ $|\mathrm{IL}'|$ for that asset class. Using the BLUE-CHIP tier
 The asymmetric upper boundary of the safe zone (`+334` rather than `+250`)
 reflects the IL function's asymmetry — an LP loses less from a 33 % price
 *rise* than from a 25 % price *drop* — and matches the asymmetric algebra
-of $(\delta)$ itself. Each tier's coefficients are tuned to match its own
+of $`(\delta)`$ itself. Each tier's coefficients are tuned to match its own
 asymmetry; the structural shape (safe → alert → danger → cap, with linear
 + exponential ramps) is the same for all tiers.
 
@@ -319,43 +319,43 @@ Inside each zone the fee is expressed directly in **V4 pips**
 (1,000,000 = 100%); no intermediate unit conversion is required.
 Using the BLUE-CHIP coefficients hard-coded in `SpryHook._tierBlueChip()`:
 
-**Safe zone** ($\delta \in [-250, 334]$):
+**Safe zone** ($`\delta \in [-250, 334]`$):
 
 $$
 \text{fee}(\delta) = \text{safeFee} = 3\,000 \text{ pips}
 $$
 
-**Alert left** ($\delta \in [-500, -250)$):
+**Alert left** ($`\delta \in [-500, -250)`$):
 
 $$
 \text{fee}(\delta) = \frac{a_L \cdot \delta + 1000 \cdot b_L}{10^{6}}
 \qquad (a_L = -68\,000\,000,\; b_L = -14\,000\,000)
 $$
 
-**Alert right** ($\delta \in (334, 1000]$):
+**Alert right** ($`\delta \in (334, 1000]`$):
 
 $$
 \text{fee}(\delta) = \frac{a_R \cdot \delta + 1000 \cdot b_R}{10^{6}}
 \qquad (a_R = 25\,525\,525,\; b_R = -5\,525\,525)
 $$
 
-**Danger left** ($\delta \in [-1000, -500)$):
+**Danger left** ($`\delta \in [-1000, -500)`$):
 
 $$
 \text{fee}(\delta) = \frac{a_L^{\text{exp}} \cdot \exp\!\bigl(b_L^{\text{exp}} \cdot \delta / 1000\bigr)}{10^{36}}
 $$
 
-with $a_L^{\text{exp}} \approx 8 \cdot 10^{21}$ and $b_L^{\text{exp}} \approx
--1.83 \cdot 10^{18}$ (raw SD59x18).
+with $`a_L^{\text{exp}} \approx 8 \cdot 10^{21}`$ and $`b_L^{\text{exp}} \approx
+-1.83 \cdot 10^{18}`$ (raw SD59x18).
 
-**Danger right** ($\delta \in (1000, 5000]$):
+**Danger right** ($`\delta \in (1000, 5000]`$):
 
 $$
 \text{fee}(\delta) = \frac{a_R^{\text{exp}} \cdot \exp\!\bigl(b_R^{\text{exp}} \cdot \delta / 1000\bigr)}{10^{36}}
 $$
 
-with $a_R^{\text{exp}} \approx 1.59 \cdot 10^{22}$ and $b_R^{\text{exp}}
-\approx 2.29 \cdot 10^{17}$.
+with $`a_R^{\text{exp}} \approx 1.59 \cdot 10^{22}`$ and $`b_R^{\text{exp}}
+\approx 2.29 \cdot 10^{17}`$.
 
 **Cap** (everywhere else):
 
@@ -364,9 +364,9 @@ $$
 $$
 
 The coefficients are chosen so the curve is continuous at every
-safe ↔ alert and alert ↔ danger boundary. At $\delta = \pm 500$ both the
+safe ↔ alert and alert ↔ danger boundary. At $`\delta = \pm 500`$ both the
 alert linear formula and the danger exponential formula evaluate to
-20,000 pips; at $\delta = -250$ and $\delta = +334$ the alert formulas
+20,000 pips; at $`\delta = -250`$ and $`\delta = +334`$ the alert formulas
 evaluate to 3,000 pips matching the safe zone. The danger-zone
 exponentials use PRB-Math's `SD59x18` fixed-point exponential [8] for
 precision; the safe, alert, and cap zones are pure integer arithmetic.
@@ -387,7 +387,7 @@ per-pool fee for that single swap. The pool's stored fee remains
 
 ### 3.5 Robustness
 
-The formula in $(\delta)$ uses one reserve and one swap amount per case,
+The formula in $`(\delta)`$ uses one reserve and one swap amount per case,
 never dividing by the *opposite* reserve. This is important: a naive
 implementation that first computes pre- and post-swap spot prices
 
@@ -395,17 +395,17 @@ $$
 P_i = \frac{R_y}{R_x}, \quad P_f = \frac{R_y - \Delta y}{R_x + \Delta x}
 $$
 
-would, on EVM integer arithmetic, truncate $P_i$ to zero in pools with a
+would, on EVM integer arithmetic, truncate $`P_i`$ to zero in pools with a
 heavily-skewed decimal ratio (for example a 6-decimal stablecoin paired with
 an 18-decimal token at the stablecoin's "natural" price). The subsequent
-$P_f / P_i$ division would then panic. The direct form $(\delta)$ has no such
+$`P_f / P_i`$ division would then panic. The direct form $`(\delta)`$ has no such
 failure mode at any reserve ratio that fits in `uint128`.
 
 ### 3.6 Worked example (single swap, BLUE-CHIP)
 
-Consider a Spry pool with virtual reserves $R_x = R_y = 10^{22}$ at the
-sqrt-price $\sqrt{P}_{X96} = 2^{96}$ (a 1:1 price). A swap that asks for
-$\Delta x_{\mathrm{out}} = 5 \cdot 10^{21}$ (50 % of the token-0 reserve)
+Consider a Spry pool with virtual reserves $`R_x = R_y = 10^{22}`$ at the
+sqrt-price $`\sqrt{P}_{X96} = 2^{96}`$ (a 1:1 price). A swap that asks for
+$`\Delta x_{\mathrm{out}} = 5 \cdot 10^{21}`$ (50 % of the token-0 reserve)
 yields
 
 $$
@@ -421,7 +421,7 @@ contributes ≈ 849,690 pips·delta, so the marginal average is roughly
 the safe zone.
 
 A swap of the same magnitude in the opposite direction, asking for
-$\Delta y_{\mathrm{out}} = 5 \cdot 10^{21}$ of the token-1 reserve,
+$`\Delta y_{\mathrm{out}} = 5 \cdot 10^{21}`$ of the token-1 reserve,
 yields
 
 $$
@@ -448,8 +448,8 @@ to match the asset class of the pair:
 Each tier additionally pins its own per-side zone bounds (`safeLow`,
 `safeHigh`, `alertLow`, `alertHigh`, `dangerLow`, `dangerHigh`), tuned to
 the volatility expected of that asset class. The linear coefficients
-$(a_L, b_L, a_R, b_R)$ and exponential coefficients
-$(a_L^{\text{exp}}, b_L^{\text{exp}}, a_R^{\text{exp}}, b_R^{\text{exp}})$
+$`(a_L, b_L, a_R, b_R)`$ and exponential coefficients
+$`(a_L^{\text{exp}}, b_L^{\text{exp}}, a_R^{\text{exp}}, b_R^{\text{exp}})`$
 are derived by solving the boundary-continuity equations — two-equation,
 two-unknown for the alert (linear) zone; log + exponential isolation for
 the danger (PRB-Math SD59x18 exponential) zone — and are baked into the
@@ -468,10 +468,10 @@ genuinely co-exist at multiple tiers if the market wants it to.
 
 ### 3.8 Per-pool cumulative tracker
 
-Per-swap dispatch (evaluating the curve at the swap's own $\delta$) is
+Per-swap dispatch (evaluating the curve at the swap's own $`\delta`$) is
 robust to one big trade but vulnerable to **splitting**: an attacker
-who breaks one large $\delta$ into $N$ smaller swaps within the same
-block pays $N$ small-swap fees, each evaluated near $\delta = 0$. To
+who breaks one large $`\delta`$ into $`N`$ smaller swaps within the same
+block pays $`N`$ small-swap fees, each evaluated near $`\delta = 0`$. To
 close that loophole, every Spry pool maintains a one-storage-slot
 cumulative window:
 
@@ -486,9 +486,9 @@ mapping(PoolId => PoolWindow) internal _poolWindow;
 At each `beforeSwap` the hook lazily resets the window on a new block
 (`block.number >= windowStart + BLOCK_WINDOW`), reads the current
 `signedCum`, computes the swap's contribution `Δ`, and computes
-$\text{cumBefore}, \text{cumAfter} = \text{cumBefore} + \Delta$. The fee
+$`\text{cumBefore}, \text{cumAfter} = \text{cumBefore} + \Delta`$. The fee
 is then evaluated against the (cumBefore, cumAfter) pair, not the
-isolated $\Delta$. After the fee is returned, `signedCum` is saturated
+isolated $`\Delta`$. After the fee is returned, `signedCum` is saturated
 to `int128` bounds and persisted.
 
 `BLOCK_WINDOW` is an `immutable` set at deployment time, not a baked-in
@@ -514,7 +514,7 @@ a zero window would degenerate the cumulative tracker into a no-op
 Given (cumBefore, cumAfter) the hook dispatches to
 `SmartFeeLib.marginalFee(cumBefore, cumAfter, p)`. The case analysis is:
 
-**GROWTH** — same sign and $|\text{after}| > |\text{before}|$. The swap
+**GROWTH** — same sign and $`|\text{after}| > |\text{before}|`$. The swap
 pushes the pool further from neutral; the fee is the *integral average*
 of the curve over the cumulative interval:
 
@@ -522,13 +522,13 @@ $$
 \text{marginal} = \frac{1}{|\text{after}| - |\text{before}|} \int_{|\text{before}|}^{|\text{after}|} \text{fee}(x)\,dx
 $$
 
-**UNWIND** — same sign and $|\text{after}| \le |\text{before}|$. The swap
+**UNWIND** — same sign and $`|\text{after}| \le |\text{before}|`$. The swap
 brings the pool toward neutral; the fee is the tier's `safeFee`. LP
 still gets paid; the unwinder is not penalised for fixing the pool.
 
 **FLIP** — opposite strict signs. The swap crosses zero; the fee is the
 weighted average over the unwind half (charged at `safeFee`) and the
-growth half (charged at the integral over $[0, |\text{after}|]$):
+growth half (charged at the integral over $`[0, |\text{after}|]`$):
 
 $$
 \text{marginal} = \frac{\text{safeFee}\cdot|\text{before}| + \int_0^{|\text{after}|} \text{fee}(x)\,dx}{|\text{before}|+|\text{after}|}
@@ -553,11 +553,11 @@ $$
 F_{\text{cap}}(\delta) = \text{capFee}\cdot\delta
 $$
 
-with the obvious side-substitutions ($a := a_R$ or $-a_L$;
-$b := b_R$ or $b_L$) for the right vs left half of the curve.
+with the obvious side-substitutions ($`a := a_R`$ or $`-a_L`$;
+$`b := b_R`$ or $`b_L`$) for the right vs left half of the curve.
 
-**Path-independence (statement).** Let $c_0 = c^{(0)} < c^{(1)} <
-\dots < c^{(N)} = c_n$ be any monotone partition of a trajectory inside
+**Path-independence (statement).** Let $`c_0 = c^{(0)} < c^{(1)} <
+\dots < c^{(N)} = c_n`$ be any monotone partition of a trajectory inside
 one side. Then in real arithmetic
 
 $$
@@ -566,18 +566,18 @@ $$
 \text{marginal}_{\text{full}} \cdot (c_n - c_0)
 $$
 
-because the integral telescopes ($F(c_n) - F(c_0)$ regardless of any
+because the integral telescopes ($`F(c_n) - F(c_0)`$ regardless of any
 intermediate splits). In integer arithmetic the equality holds within
-$|whole - \Sigma split| \le 2 \cdot |I| + 3 \cdot N$ (one ulp per
-zone-crossing inside `_integral` plus up to $(I - 1)$ per
+$`|whole - \Sigma split| \le 2 \cdot |I| + 3 \cdot N`$ (one ulp per
+zone-crossing inside `_integral` plus up to $`(I - 1)`$ per
 `area / interval` truncation per piece). The bound is asserted by
 `testFuzzPathIndependenceMonotone` over 256 random
-$(c_0, c_n, N)$ triples.
+$`(c_0, c_n, N)`$ triples.
 
 **Splitting-attack consequence.** Two swaps of the same total token
-amount, one taken whole and the other split into $N$ pieces inside the
+amount, one taken whole and the other split into $`N`$ pieces inside the
 same block, produce DIFFERENT cumulative trajectories: each smaller
-piece's $\delta$ is computed against post-previous-swap reserves which
+piece's $`\delta`$ is computed against post-previous-swap reserves which
 are more imbalanced, so the cumulative travels DEEPER per unit of
 token. Combined with path-independence over a fixed trajectory, this
 means the splitter's total fee is **at least as high** as the big-swap
@@ -604,7 +604,7 @@ depends on.
 | `SpryRouter` | `contracts/SpryRouter.sol` | 509 | Swap-only periphery router. Public methods: `swapExactInputSingle`, `swapExactOutputSingle`, `swapExactInput` (unbounded multi-hop), `swapExactOutput`, and their Permit / Permit2 / multicall variants. Every method opens exactly one `PoolManager.unlock` call. Slippage, deadline, native-ETH refund, and fee-on-transfer-tolerant settlement live here. The router holds no funds at rest and never mints LP shares — liquidity provision goes through Uniswap's canonical V4 `PositionManager`. |
 | `SmartFeeLib` | `contracts/libs/SmartFeeLib.sol` | 204 | Fee math. Public entries: `getDynamicFee` (curve evaluated at this swap's delta), `feeForDelta` (curve at an arbitrary cum point), `computeSignedDelta` (the signed per-mille reserve-shift indicator), and `marginalFee(cumBefore, cumAfter, p)` (the integral-mode dispatch used by SpryHook). Internally dispatches across the four zones — safe (constant), alert (linear), danger (PRB-Math SD59x18 exponential), cap (constant) — with per-zone antiderivative helpers (`_alertArea`, `_dangerArea`) that stitch a piecewise integral across zone boundaries. |
 | `SpryFeeTypes` | `contracts/libs/SpryFeeTypes.sol` | 19 | The `SpryFeeParams` struct: six `int32` zone bounds, four `int64` linear coefficients, four `int128` SD59x18 exponential coefficients, plus `uint32 safeFee` and `uint32 capFee`. One struct per tier, returned by `SpryHook._tierParams` as a bytecode immutable. |
-| `VirtualReserves` | `contracts/libs/VirtualReserves.sol` | 16 | Converts the V4 pool state $(\sqrt{P}_{X96}, L)$ into V2-equivalent virtual reserves $(R_0, R_1)$. Uses `FullMath.mulDiv` for 512-bit intermediate precision at extreme prices. |
+| `VirtualReserves` | `contracts/libs/VirtualReserves.sol` | 16 | Converts the V4 pool state $`(\sqrt{P}_{X96}, L)`$ into V2-equivalent virtual reserves $`(R_0, R_1)`$. Uses `FullMath.mulDiv` for 512-bit intermediate precision at extreme prices. |
 | `HookMiner` | `script/HookMiner.sol` | — | Brute-force CREATE2 salt miner. V4 derives a hook's permissions from the low 14 bits of its address, so the deployer must search for a salt whose resulting `CREATE2` address has exactly the right flag bits set. Solidity-pure; usable both on-chain in deploy scripts and inside `setUp()` of test contracts. |
 
 The script `script/DeploySpry.s.sol` wires these together, mining the hook
@@ -714,17 +714,17 @@ the flag, so the lower bits of `key.fee` cannot also be repurposed to
 encode the tier index. Instead the tier is encoded in `tickSpacing`: the
 first call to `beforeSwap` reads `key.tickSpacing` and looks it up in
 `_tierFromTickSpacing`, reverting with `InvalidTier` if it is not one of
-the five sanctioned values $\{1, 10, 60, 200, 1000\}$. Pool creation is
+the five sanctioned values $`\{1, 10, 60, 200, 1000\}`$. Pool creation is
 the operator's responsibility — `SpryRouter` does not initialise pools
 — but the deploy script includes a worked example for each tier.
 
 ### 5.3 Virtual reserves
 
 `SmartFeeLib.computeSignedDelta` — the function the hook calls on every
-swap — operates on the V2-style virtual reserves $(R_0, R_1)$.
+swap — operates on the V2-style virtual reserves $`(R_0, R_1)`$.
 `VirtualReserves.fromState` derives them from V4 pool state using the
-pool's in-range liquidity $L$; under the full-range configuration Spry's
-IL economics assume (Section 2.4), $L$ is the pool's total liquidity and
+pool's in-range liquidity $`L`$; under the full-range configuration Spry's
+IL economics assume (Section 2.4), $`L`$ is the pool's total liquidity and
 the reserves describe the whole curve:
 
 $$
@@ -1082,9 +1082,9 @@ each pool — so a cross-pool state-bleed (e.g. the hook keying
 `_poolWindow` by anything other than the `PoolId`) would surface as a
 violation on the "innocent" pool after activity on the "noisy" one.
 
-Additionally, the in-handler `swap` operation asserts $K_{\text{after}}
-\ge K_{\text{before}}$ on the virtual constant $K = L^2$, so the random
-swaps never produced a single case of $K$ decreasing across a swap.
+Additionally, the in-handler `swap` operation asserts $`K_{\text{after}}
+\ge K_{\text{before}}`$ on the virtual constant $`K = L^2`$, so the random
+swaps never produced a single case of $`K`$ decreasing across a swap.
 
 ### 9.5 Fork testing
 
