@@ -36,7 +36,7 @@ native ETH, flash-accounting multi-hop, and audited swap engine.
 This whitepaper formalises the impermanent-loss problem, derives the dynamic
 fee curve, specifies the tier registry and cumulative tracker, proves the
 integral-mode path-independence property, walks the contract surface, and
-documents the 256 forge tests that back each claim.
+documents the 264 forge tests that back each claim.
 
 ---
 
