@@ -19,7 +19,7 @@ import {HookMiner} from "../../script/HookMiner.sol";
 /// @notice V4 derives a hook's allowed callback set from its address's
 ///         low-14-bit pattern. This means an attacker cannot deploy a
 ///         contract whose code claims to be a Spry hook but whose address
-///         doesn't encode BEFORE_SWAP_FLAG — the PoolManager will reject
+///         doesn't encode BEFORE_SWAP_FLAG, the PoolManager will reject
 ///         initialize() outright. These tests prove that property end-to-end.
 contract HookFlagsManipulation is Test {
     IPoolManager internal manager;

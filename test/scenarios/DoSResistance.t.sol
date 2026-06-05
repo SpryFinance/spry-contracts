@@ -24,7 +24,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 ///           1. A token that ALWAYS reverts on transfer. Its pool's swaps
 ///              fail (expected), but a healthy second pool keeps working.
 ///           2. A pool with `address(0)` as a hooks key falls back to
-///              static fee — not a Spry pool — and still works as a
+///              static fee (not a Spry pool) and still works as a
 ///              normal V4 pool, demonstrating that the hook only governs
 ///              pools it's actually attached to.
 contract DoSResistance is Test {

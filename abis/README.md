@@ -1,7 +1,7 @@
 # ABIs
 
 Contract ABIs for off-chain consumers (subgraph, indexers, front-end,
-scripts). Each file is a **bare ABI array** — the format `graph-cli`,
+scripts). Each file is a **bare ABI array**, the format `graph-cli`,
 ethers, viem, and wagmi expect directly.
 
 | File | Source | Role |
@@ -17,7 +17,7 @@ in one place. They are not Spry code.
 
 ## Indexing note (read before building a subgraph)
 
-`SpryRouter` emits no events. `SpryHook` emits **one** event — the
+`SpryRouter` emits no events. `SpryHook` emits **one** event, the
 canonical off-chain signal for Spry-specific analytics that V4's `Swap`
 event cannot carry:
 
@@ -42,14 +42,14 @@ Field semantics you can rely on:
   order.
 - **`fee`** is the clean per-swap dynamic LP fee in pips (1e6 = 100%) with
   the `OVERRIDE_FEE_FLAG` already removed. On Spry pools it equals
-  `Swap.fee` (there is no protocol fee — see invariants below).
+  `Swap.fee` (there is no protocol fee; see invariants below).
 - **`cumAfter`** equals the pool's persisted `signedCum` after the swap and
   chains: `cumAfter` of swap _N_ == `cumBefore` of swap _N+1_ within a
   window. On the first swap of a new window, `cumBefore == 0` (lazy reset).
 - **`zone`** is the curve zone of `cumAfter` (where the pool sits now). In
   integral mode the charged `fee` is the *average* of the curve over
   `[cumBefore, cumAfter]` and may span zones, so `zone` is a descriptive
-  label of the endpoint — don't re-derive `fee` from it.
+  label of the endpoint; don't re-derive `fee` from it.
 - **`windowId`** (= `windowStart` block) groups every observation in one
   block-window; you don't need to read `BLOCK_WINDOW` to bucket windows.
 
@@ -58,11 +58,11 @@ The rest of the indexing model uses **canonical V4 events** from
 
 | Event (source) | What it gives the Spry subgraph |
 |---|---|
-| `Initialize(id, currency0, currency1, fee, tickSpacing, hooks, sqrtPriceX96, tick)` — PoolManager | Filter to Spry pools (see below); derive the **tier** from `tickSpacing`. |
-| `Swap(id, sender, amount0, amount1, sqrtPriceX96, liquidity, tick, fee)` — PoolManager | `fee` is the per-swap LP fee with `OVERRIDE_FEE_FLAG` stripped by V4 core; equals the `SpryFee.fee` of the paired hook emission. `sender` is the immediate caller (a router), not the EOA. |
-| `ModifyLiquidity(id, sender, tickLower, tickUpper, liquidityDelta, salt)` — PoolManager | LP add/remove. When the caller is the canonical V4 `PositionManager`, `salt == bytes32(tokenId)`, which links a position to its pool. |
-| `Donate(id, sender, amount0, amount1)` — PoolManager | Direct donations to a pool. |
-| `Transfer`, `Subscription`, `Unsubscription`, `Approval`, `ApprovalForAll` — PositionManager | LP-position ownership, exactly as in Uniswap's `v4-subgraph`. |
+| `Initialize(id, currency0, currency1, fee, tickSpacing, hooks, sqrtPriceX96, tick)` (PoolManager) | Filter to Spry pools (see below); derive the **tier** from `tickSpacing`. |
+| `Swap(id, sender, amount0, amount1, sqrtPriceX96, liquidity, tick, fee)` (PoolManager) | `fee` is the per-swap LP fee with `OVERRIDE_FEE_FLAG` stripped by V4 core; equals the `SpryFee.fee` of the paired hook emission. `sender` is the immediate caller (a router), not the EOA. |
+| `ModifyLiquidity(id, sender, tickLower, tickUpper, liquidityDelta, salt)` (PoolManager) | LP add/remove. When the caller is the canonical V4 `PositionManager`, `salt == bytes32(tokenId)`, which links a position to its pool. |
+| `Donate(id, sender, amount0, amount1)` (PoolManager) | Direct donations to a pool. |
+| `Transfer`, `Subscription`, `Unsubscription`, `Approval`, `ApprovalForAll` (PositionManager) | LP-position ownership, exactly as in Uniswap's `v4-subgraph`. |
 
 ### Spry-pool filter
 
@@ -76,7 +76,7 @@ fee == 0x800000                       // LPFeeLibrary.DYNAMIC_FEE_FLAG
 tickSpacing ∈ {1, 10, 60, 200, 1000}
 ```
 
-### Tier table (immutable — safe to hardcode)
+### Tier table (immutable, safe to hardcode)
 
 `tickSpacing` selects the tier and its fee curve. The table is compile-time
 constant in the hook (`tierParams(uint8)` is `pure`; no setter, owner, or
@@ -97,23 +97,23 @@ For the full zone bounds + curve coefficients, `eth_call`
 
 Verified against the pinned V4 core (see Provenance):
 
-- **No protocol fee** on Spry pools — the hook never sets one and V4
+- **No protocol fee** on Spry pools: the hook never sets one and V4
   defaults to 0, so `Swap.fee == lpFee == SpryFee.fee`. Only V4's
   `protocolFeeController` could change this; if it ever did, `SpryFee.fee`
   still carries the pure LP fee and the difference vs `Swap.fee` is the
   protocol cut.
-- **No hook-collected value** — `beforeSwap` returns a zero delta,
+- **No hook-collected value**: `beforeSwap` returns a zero delta,
   `afterSwap` returns 0, and the hook holds only `BEFORE_SWAP_FLAG` (no
   returns-delta permission), so `Swap.amount0/amount1` are the complete
   user-facing amounts.
-- **Single, immutable, non-upgradeable hook** (no proxy) — hardcode the
+- **Single, immutable, non-upgradeable hook** (no proxy): hardcode the
   address per chain; a future breaking change would be a new contract at a
   new address. `BLOCK_WINDOW` is a per-chain `immutable`.
-- **Pre-deployment** — there is no mainnet/testnet `SPRY_HOOK_ADDRESS` or
+- **Pre-deployment**: there is no mainnet/testnet `SPRY_HOOK_ADDRESS` or
   start block yet; keep both templated until deploy.
 
 For lookups, the hook also exposes `poolWindow(bytes32)` and
-`tierParams(uint8)` as `view`/`pure` — usable from `eth_call` at
+`tierParams(uint8)` as `view`/`pure`, usable from `eth_call` at
 end-of-block (e.g. for a one-shot bootstrap of pool state).
 
 ## Provenance

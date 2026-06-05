@@ -26,27 +26,27 @@ import {PathKey} from "v4-periphery/src/libraries/PathKey.sol";
 ///         multi-hop), slippage and deadline guards, and first-class
 ///         native-ETH support. Each swap entry point opens exactly one
 ///         `PoolManager.unlock` and resolves all deltas inside the
-///         resulting `unlockCallback`. The non-swap entry points —
-///         `selfPermit`, the inherited Permit2Forwarder `permit` /
-///         `permitBatch`, `multicall`, and the `receive()` fallback —
+///         resulting `unlockCallback`. The non-swap entry points
+///         (`selfPermit`, the inherited Permit2Forwarder `permit` /
+///         `permitBatch`, `multicall`, and the `receive()` fallback)
 ///         open no unlock; `multicall` simply DELEGATECALLs into the
 ///         swap methods, each of which opens its own.
 /// @dev    Liquidity management (add / remove / increase / decrease) is
 ///         delegated to Uniswap's canonical `PositionManager` from
-///         v4-periphery — it mints an ERC721 NFT per LP position with
+///         v4-periphery; it mints an ERC721 NFT per LP position with
 ///         per-position fee accounting handled by V4 itself. Mirroring
 ///         Uniswap's UniversalRouter + PositionManager split: SpryRouter
 ///         is swap-only, PositionManager is LP-only. The two contracts
 ///         operate independently against the shared V4 PoolManager and
 ///         the shared SpryHook.
 /// @dev    SafeTransferLib (non-standard ERC20 tolerance) is pulled in
-///         from solmate rather than rolled by hand — already audited and
+///         from solmate rather than rolled by hand, already audited and
 ///         part of the V4 core dependency tree.
 /// @dev    multicall caveat: `multicall(bytes[])` (inherited from
 ///         v4-periphery's `Multicall_v4`) is `payable`, and `msg.value`
 ///         is preserved across every inner delegatecall. The ETH-refund
 ///         logic on this router fires from inside each swap entry point
-///         against a balance snapshot at that entry point — the multicall
+///         against a balance snapshot at that entry point; the multicall
 ///         wrapper itself does not refund. As a result, a multicall whose
 ///         payload contains no ETH-consuming inner call (e.g.
 ///         `[selfPermit, permit2.permit]` with `value > 0`) leaves the
@@ -88,7 +88,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     ///         supplies the from-side currency.
     /// @dev    Using `PathKey` directly (instead of a local clone) means the
     ///         same struct works for both swaps through this router and
-    ///         quotes through V4Quoter — integrators only learn one shape.
+    ///         quotes through V4Quoter; integrators only learn one shape.
 
     struct MultiInputData {
         Currency currencyIn;
@@ -143,7 +143,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     error InvalidCallbackKind();
     error EmptyPath();
 
-    /// @notice Permit2 cannot mediate native-ETH transfers — it only knows
+    /// @notice Permit2 cannot mediate native-ETH transfers; it only knows
     ///         about ERC20s. Raised when a *ViaPermit2 entry point is asked
     ///         to settle a native-ETH leg.
     error Permit2NativeUnsupported();
@@ -157,7 +157,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     /// @notice `recipient` cannot be the router itself. The router has no
     ///         admin / sweep / rescue function, so tokens delivered to it
     ///         are permanently stuck. ETH-output swaps would self-recover
-    ///         via the refund path, but ERC20 outputs would not — rejecting
+    ///         via the refund path, but ERC20 outputs would not. Rejecting
     ///         uniformly is the only safe default.
     error InvalidRecipient();
 
@@ -166,7 +166,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     ///         int256 for V4 SwapParams.amountSpecified; in Solidity 0.8.x
     ///         that cast is a bit reinterpretation, so any value with bit
     ///         255 set silently becomes negative and flips exactIn/exactOut
-    ///         semantics. Bound exists for defense-in-depth — reaching it
+    ///         semantics. Bound exists for defense-in-depth; reaching it
     ///         requires astronomically large (~5.79e76) amounts.
     error AmountTooLarge();
 
@@ -206,7 +206,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     receive() external payable {}
 
     // -------------------------------------------------------------------
-    // External — payable
+    // External: payable
     // -------------------------------------------------------------------
 
     /// @notice Forward an EIP-2612 permit signature to a permit-enabled ERC20.
@@ -402,7 +402,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     // Multi-hop user entry points
     // ---------------------------------------------------------------------
 
-    /// @notice Exact-input swap along an arbitrary-length path. Atomic — a
+    /// @notice Exact-input swap along an arbitrary-length path. Atomic: a
     ///         failure on any hop reverts the entire transaction. The final
     ///         output currency is `path[path.length - 1].intermediateCurrency`.
     ///         For a single-hop swap, prefer `swapExactInputSingle` (lower gas).
@@ -473,7 +473,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     ///         amount. Atomic, slippage-checked against `amountInMax`.
     ///         For a single-hop swap, prefer `swapExactOutputSingle`
     ///         (lower gas).
-    /// @dev    Path encoding matches V4Router / V4Quoter — see the
+    /// @dev    Path encoding matches V4Router / V4Quoter; see the
     ///         `MultiOutputData` NatSpec for the rules. In short: for a
     ///         swap A -> B -> C with `currencyOut = C`, the path is
     ///         `[{intermediateCurrency: A}, {intermediateCurrency: B}]`.
@@ -550,7 +550,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     }
 
     // -------------------------------------------------------------------
-    // External — non-payable
+    // External: non-payable
     // -------------------------------------------------------------------
 
     /// @notice The only entry point `PoolManager` calls back into during an
@@ -581,7 +581,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     }
 
     // -------------------------------------------------------------------
-    // Internal — non-payable (executors and state-changing helpers)
+    // Internal: non-payable (executors and state-changing helpers)
     // -------------------------------------------------------------------
 
     // ---------------------------------------------------------------------
@@ -639,7 +639,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
         for (uint256 i = 0; i < data.path.length; i++) {
             PathKey memory hop = data.path[i];
             Currency currentOut = hop.intermediateCurrency;
-            // currentIn must differ from currentOut — otherwise the derived
+            // currentIn must differ from currentOut; otherwise the derived
             // PoolKey would have currency0 == currency1, which V4 cannot
             // initialize. Fail with a clear error instead.
             if (currentIn == currentOut) revert InvalidPath();
@@ -794,7 +794,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     }
 
     // -------------------------------------------------------------------
-    // Internal — view
+    // Internal: view
     // -------------------------------------------------------------------
 
     /// @dev Snapshot of the router's ETH balance excluding the current call's
@@ -816,7 +816,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     }
 
     // -------------------------------------------------------------------
-    // Internal — pure
+    // Internal: pure
     // -------------------------------------------------------------------
 
     /// @dev Reverts with `Permit2NativeUnsupported` if `c` is native ETH.
@@ -835,7 +835,7 @@ contract SpryRouter is IUnlockCallback, Multicall_v4, Permit2Forwarder {
     }
 
     // -------------------------------------------------------------------
-    // Private — non-payable
+    // Private: non-payable
     // -------------------------------------------------------------------
 
     /// @dev Extracted to keep `_executeMultiExactOutput`'s stack budget under

@@ -60,7 +60,7 @@ contract SmartFeeLibTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // SmartFeeLib.getDynamicFee — base fee in safe zone
+    // SmartFeeLib.getDynamicFee, base fee in safe zone
     // ---------------------------------------------------------------------
     function testFeeSafeZoneExactOutSmall() public pure {
         // amountSpecified = +250 token1 out, zeroForOne=true (so amount1Out=250)
@@ -147,7 +147,7 @@ contract SmartFeeLibTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // Exact-in path (negative amountSpecified) — uses the no-fee constant-
+    // Exact-in path (negative amountSpecified), uses the no-fee constant-
     // product output formula to derive the implied output, then runs the
     // standard delta math against that derived output.
     // ---------------------------------------------------------------------
@@ -197,7 +197,7 @@ contract SmartFeeLibTest is Test {
     // formula has no such failure mode at any reserve ratio.
     // ---------------------------------------------------------------------
     function testExtremeRatioDoesNotPanic() public pure {
-        // sqrtPrice corresponding to massive imbalance — should not div-by-zero.
+        // sqrtPrice corresponding to massive imbalance, should not div-by-zero.
         // Pick a sqrtPrice well above 2^96 (price > 1) and a small swap.
         uint160 sqrtP = uint160((uint256(1) << 96) * 1_000_000);
         // virtual reserves: r0 ≈ liquidity/1e6, r1 ≈ liquidity*1e6
@@ -207,7 +207,7 @@ contract SmartFeeLibTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // Boundary continuity — the linear-zone coefficients are tuned so the
+    // Boundary continuity, the linear-zone coefficients are tuned so the
     // curve is continuous at every safe<->alert<->danger transition in
     // spite of the asymmetric delta formula. These tests pin that
     // property: any future change to A_*, B_*, or the delta formula that
@@ -233,7 +233,7 @@ contract SmartFeeLibTest is Test {
     }
 
     /// @dev Just past the boundary (delta = -251) the left-alert linear
-    ///      formula must still return very close to the safe-zone fee —
+    ///      formula must still return very close to the safe-zone fee,
     ///      no perceptible jump. V4-pip-native math gives 3068 pips at
     ///      delta=-251 (vs. 3000 at -250), confirming linear continuity.
     function testFeeNoJumpJustPastLeftSafeBoundary() public pure {

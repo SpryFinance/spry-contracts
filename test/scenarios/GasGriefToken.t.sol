@@ -22,7 +22,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 /// @notice A pool that pairs with a malicious token whose transfer burns
 ///         a large amount of gas (e.g. unbounded storage writes). The
 ///         property we want: that pool's operations may run expensive or
-///         out-of-gas, but the failure stays *local* to that pool — other
+///         out-of-gas, but the failure stays *local* to that pool, other
 ///         pools on the same PoolManager continue to operate normally.
 ///         This protects users of well-behaved pools from being denied
 ///         service by a malicious token's pool sharing infrastructure.
@@ -104,7 +104,7 @@ contract GasGriefToken is Test {
         assertGt(out, 0, "healthy pool swap works");
 
         // Now try pool A with a limited gas budget. We don't care whether
-        // the call reverts or simply runs out of gas — the assertion is
+        // the call reverts or simply runs out of gas, the assertion is
         // that pool B keeps working AFTER pool A's failure.
         try lp.addLiquidity{gas: 5_000_000}(keyBad, 1e22, 1e22, address(this)) returns (uint128, uint256, uint256) {} catch {}
 

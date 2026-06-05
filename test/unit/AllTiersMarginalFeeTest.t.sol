@@ -87,7 +87,7 @@ contract AllTiersMarginalFeeTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // Alert-zone interior — marginal must sit strictly between safeFee
+    // Alert-zone interior, marginal must sit strictly between safeFee
     // and capFee for each tier (the linear ramp covers the alert zone).
     // ------------------------------------------------------------------
 
@@ -107,7 +107,7 @@ contract AllTiersMarginalFeeTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // Danger-zone interior — marginal must sit strictly between safeFee
+    // Danger-zone interior, marginal must sit strictly between safeFee
     // and capFee. (The exponential ramps from alertEdgeFee at alertHigh
     // up to dangerEdgeFee at dangerHigh.)
     // ------------------------------------------------------------------
@@ -128,7 +128,7 @@ contract AllTiersMarginalFeeTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // UNWIND case — same sign, absAfter < absBefore — always returns the
+    // UNWIND case (same sign, absAfter < absBefore) always returns the
     // tier's safeFee regardless of where the cum starts.
     // ------------------------------------------------------------------
 
@@ -136,7 +136,7 @@ contract AllTiersMarginalFeeTest is Test {
         for (uint8 t = 0; t < TIER_COUNT; ++t) {
             SpryFeeParams memory p = hook.tierParams(t);
 
-            // Start deep in danger, unwind toward safe — UNWIND from danger.
+            // Start deep in danger, unwind toward safe, UNWIND from danger.
             int256 deep = int256(p.dangerHigh) - 1;
             int256 less = int256(p.safeHigh)   / 2;
             uint24 m = SmartFeeLib.marginalFee(deep, less, p);
@@ -151,7 +151,7 @@ contract AllTiersMarginalFeeTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // FLIP case — opposite-sign cumBefore/cumAfter. Marginal is bounded
+    // FLIP case, opposite-sign cumBefore/cumAfter. Marginal is bounded
     // below by safeFee (since the unwind half pays exactly that) and
     // above by capFee.
     // ------------------------------------------------------------------

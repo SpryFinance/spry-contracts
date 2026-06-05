@@ -86,7 +86,7 @@ contract WindowLengthVariation is Test {
     }
 
     // ------------------------------------------------------------------
-    // Parametric helper — replays the same cumulative-tracker contract
+    // Parametric helper, replays the same cumulative-tracker contract
     // against an arbitrary BLOCK_WINDOW.
     // ------------------------------------------------------------------
     function _checkWindowBehavior(uint64 blockWindow) internal {
@@ -109,7 +109,7 @@ contract WindowLengthVariation is Test {
         assertEq(uint256(wsAfterFirst), block.number, "first-swap windowStart != block.number");
         assertLt(int256(cumAfterFirst), 0, "first-swap cum should be negative (token1 leaving)");
 
-        // 2. Roll forward by (BLOCK_WINDOW - 1) blocks — still inside
+        // 2. Roll forward by (BLOCK_WINDOW - 1) blocks, still inside
         //    the active window. The next swap should CONTINUE the
         //    cumulative, not reset it.
         if (blockWindow > 1) {
@@ -127,7 +127,7 @@ contract WindowLengthVariation is Test {
         router.swapExactInputSingle(key, true, 5e20, 1, address(this), block.timestamp + 100, "");
         (uint64 wsAfterReset, int128 cumAfterReset) = hook.poolWindow(pid);
         assertEq(uint256(wsAfterReset), block.number, "reset did not refresh windowStart");
-        // The post-reset cum equals the just-fired swap's own delta —
+        // The post-reset cum equals the just-fired swap's own delta,
         // strictly above the accumulated total of the prior window
         // (which was multiple swaps deep).
         assertGt(int256(cumAfterReset), int256(cumAfterFirst), "post-reset cum did not zero-base before accumulating");
@@ -137,7 +137,7 @@ contract WindowLengthVariation is Test {
     // Tests
     // ------------------------------------------------------------------
 
-    /// @dev Reference value — same as every other test in the repo.
+    /// @dev Reference value, same as every other test in the repo.
     function testWindowLength1MainnetReference() public {
         _checkWindowBehavior(1);
     }

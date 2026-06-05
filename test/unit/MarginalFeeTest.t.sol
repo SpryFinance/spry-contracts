@@ -6,7 +6,7 @@ import {SmartFeeLib} from "../../contracts/libs/SmartFeeLib.sol";
 import {SpryFeeParams} from "../../contracts/libs/SpryFeeTypes.sol";
 
 /// @title MarginalFeeTest
-/// @notice Direct unit tests for `SmartFeeLib.marginalFee` — the integral-
+/// @notice Direct unit tests for `SmartFeeLib.marginalFee`, the integral-
 ///         mode dispatch used by SpryHook to price each swap based on the
 ///         pool's cumulative trajectory. These tests pin:
 ///
@@ -96,7 +96,7 @@ contract MarginalFeeTest is Test {
     }
 
     // =====================================================================
-    // Alert-zone growth — integrate the linear ramp.
+    // Alert-zone growth, integrate the linear ramp.
     // =====================================================================
 
     function testGrowthEntirelyInRightAlert() public pure {
@@ -129,7 +129,7 @@ contract MarginalFeeTest is Test {
     }
 
     // =====================================================================
-    // Danger-zone growth — integrate the exponential ramp.
+    // Danger-zone growth, integrate the exponential ramp.
     // =====================================================================
 
     function testGrowthEntirelyInRightDanger() public pure {
@@ -151,7 +151,7 @@ contract MarginalFeeTest is Test {
     }
 
     // =====================================================================
-    // Cap zone — past dangerHigh the curve flattens to capFee.
+    // Cap zone, past dangerHigh the curve flattens to capFee.
     // =====================================================================
 
     function testGrowthEntirelyInCapRight() public pure {
@@ -170,7 +170,7 @@ contract MarginalFeeTest is Test {
     }
 
     // =====================================================================
-    // FLIP — sign-flip behavior is unwind half (safeFee) + growth integral.
+    // FLIP, sign-flip behavior is unwind half (safeFee) + growth integral.
     // =====================================================================
 
     function testFlipPureSafeReturnsSafeFee() public pure {
@@ -206,7 +206,7 @@ contract MarginalFeeTest is Test {
     }
 
     // =====================================================================
-    // Path-independence — the headline property of integral mode.
+    // Path-independence, the headline property of integral mode.
     //
     // For any monotone trajectory cum0 → cumN, the total "fee paid"
     // (Σ marginal_i · interval_i) is independent of how we partition it,
@@ -239,7 +239,7 @@ contract MarginalFeeTest is Test {
         for (int256 i = 0; i < 7; ++i) {
             split += _area(int256(i * 100), int256((i + 1) * 100), p);
         }
-        // 2·700 + 3·7 = 1421 — safe upper bound, observed delta ≪ this in
+        // 2·700 + 3·7 = 1421, safe upper bound, observed delta ≪ this in
         // practice; the actual error is bounded much more tightly by the
         // path-independence proof, but we use the worst-case bound here.
         assertApproxEqAbs(whole, split, 1500);
@@ -276,13 +276,13 @@ contract MarginalFeeTest is Test {
         SpryFeeParams memory p = _blueChip();
         uint256 whole = _area(int256(-300), int256(500), p);
 
-        // Split A: split at zero — flip becomes one unwind + one growth.
+        // Split A: split at zero, flip becomes one unwind + one growth.
         uint256 splitA = _area(int256(-300), int256(0),    p)
                        + _area(int256(0),    int256(500),  p);
         // Bound: 2·800 + 3·2 ≈ 1606.
         assertApproxEqAbs(whole, splitA, 1_700);
 
-        // Split B: split off-center — middle piece is itself a smaller flip.
+        // Split B: split off-center, middle piece is itself a smaller flip.
         uint256 splitB = _area(int256(-300), int256(-50),  p)
                        + _area(int256(-50),  int256(150),  p)
                        + _area(int256(150),  int256(500),  p);
@@ -318,7 +318,7 @@ contract MarginalFeeTest is Test {
     }
 
     // =====================================================================
-    // Boundary continuity — marginal at a zone-spanning interval should be
+    // Boundary continuity, marginal at a zone-spanning interval should be
     // between (i.e., a weighted avg of) the rates at the two endpoints.
     // =====================================================================
 
@@ -334,7 +334,7 @@ contract MarginalFeeTest is Test {
     }
 
     // =====================================================================
-    // Fuzz: random (cumBefore, cumAfter, nSplits) — area equality between
+    // Fuzz: random (cumBefore, cumAfter, nSplits), area equality between
     // the whole and uniform N-piece subdivision must hold within the
     // theoretical truncation bound `2·|interval| + 3·N`.
     // =====================================================================
@@ -347,7 +347,7 @@ contract MarginalFeeTest is Test {
         uint256 nSplits = bound(uint256(nRaw), 2, 20);
 
         int256 totalDelta = int256(c1) - int256(c0);
-        // Skip cases where uniform split rounds the step to 0 — meaningless
+        // Skip cases where uniform split rounds the step to 0, meaningless
         // and would loop infinitely on the cur=next check.
         int256 step = totalDelta / int256(nSplits);
         if (step == 0) return;
@@ -400,7 +400,7 @@ contract MarginalFeeTest is Test {
         SpryFeeParams memory p = _blueChip();
         uint24 m1 = SmartFeeLib.marginalFee(int256(0), int256(absAfter), p);
 
-        // Compare against absAfter+1 — strictly greater interval, same zero start.
+        // Compare against absAfter+1, strictly greater interval, same zero start.
         uint24 m2 = SmartFeeLib.marginalFee(int256(0), int256(absAfter + 1), p);
         // marginal is the integral average; on a non-decreasing fee curve the
         // average is monotone non-decreasing as the upper bound grows.
@@ -414,7 +414,7 @@ contract MarginalFeeTest is Test {
     ///        - safe / cap zones: the curve is constant, so marginal
     ///          equals `feeForDelta(c)` exactly.
     ///        - alert zones: the curve is linear, so the marginal equals
-    ///          the mid-point of the two endpoint rates — at most a few
+    ///          the mid-point of the two endpoint rates, at most a few
     ///          pips off the point evaluation across our tier slopes.
     ///        - danger zones: the curve is exponential, so the marginal
     ///          carries a small higher-order term but stays close.
@@ -431,7 +431,7 @@ contract MarginalFeeTest is Test {
         // discontinuity (dangerEdgeFee → capFee, a ~5000-pip step).
         // At delta = ±dangerEnd, stepping the marginal by one unit
         // crosses that step, so the two APIs return values from
-        // different zones by design — not a drift. Skip those two.
+        // different zones by design, not a drift. Skip those two.
         if (delta == int256(p.dangerHigh)) return;
         if (delta == int256(p.dangerLow))  return;
 
@@ -455,7 +455,7 @@ contract MarginalFeeTest is Test {
         // Both code paths compute the exp argument via the same
         // direct-raw (b·d)/1000 form (see `SmartFeeLib._exp` and
         // `_dangerArea`), so the danger-zone evaluations agree to within
-        // PRB-Math's own exp precision — no systematic offset between
+        // PRB-Math's own exp precision, no systematic offset between
         // the point and integral APIs.
         uint256 diff = pointRate > marginal
             ? uint256(pointRate) - uint256(marginal)
@@ -470,15 +470,15 @@ contract MarginalFeeTest is Test {
     //   marginal = (safeFee · |before| + ∫_0^{|after|} curve) / (|before| + |after|)
     //
     // Stresses the formula when one side is microscopic and the other
-    // is at the curve's full-range edge — exercising the division by
+    // is at the curve's full-range edge, exercising the division by
     // (|before| + |after|) with a denominator dominated by the larger
     // term and verifying no off-by-one or sign confusion at the limit.
     // =====================================================================
 
     /// @dev cumBefore = -1 (left, one unit below zero), cumAfter = +5000
     ///      (right cap edge). Unwind half is a single delta-unit at
-    ///      safeFee; growth half is the integral over [0, 5000] right
-    ///      — the full safe + alert + danger sweep.
+    ///      safeFee; growth half is the integral over [0, 5000] right,
+    ///      the full safe + alert + danger sweep.
     function testFlipWithTinyUnwindHugeRightGrowth() public pure {
         SpryFeeParams memory p = _blueChip();
         uint24 m = SmartFeeLib.marginalFee(int256(-1), int256(5000), p);
@@ -489,7 +489,7 @@ contract MarginalFeeTest is Test {
         //              + alertArea(safeHigh, alertHigh, right)
         //              + dangerArea(alertHigh, dangerHigh, right)
         //            ≈ 3000·334 + ~5.7M (alert ramp) + ~150M (danger ramp)
-        // total / 5001 ≈ tens of thousands of pips — somewhere between
+        // total / 5001 ≈ tens of thousands of pips, somewhere between
         // alertEdgeFee (20 000) and capFee (55 000).
         assertGt(uint256(m), 20_000, "tiny-unwind huge-right-growth marginal below alert edge");
         assertLt(uint256(m), 55_000, "tiny-unwind huge-right-growth marginal above cap");
@@ -514,7 +514,7 @@ contract MarginalFeeTest is Test {
     /// @dev Symmetric inverse: huge unwind, tiny growth. cumBefore =
     ///      +5000, cumAfter = -1. The unwind half is far larger than
     ///      the growth half, so the weighted average should be
-    ///      dominated by safeFee — within a few hundred pips of it.
+    ///      dominated by safeFee, within a few hundred pips of it.
     function testFlipWithHugeUnwindTinyLeftGrowth() public pure {
         SpryFeeParams memory p = _blueChip();
         uint24 m = SmartFeeLib.marginalFee(int256(5000), int256(-1), p);

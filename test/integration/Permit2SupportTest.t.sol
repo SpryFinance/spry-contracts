@@ -32,7 +32,7 @@ import {LPHelper} from "../utils/LPHelper.sol";
 ///         address (0x000000000022D473030F116dDEE9F6B43aC78BA3) via
 ///         v4-periphery's `DeployPermit2` helper (which uses vm.etch).
 ///         This is the exact Permit2 every mainnet chain has, so the
-///         tests exercise real Permit2 logic — not a mock.
+///         tests exercise real Permit2 logic, not a mock.
 contract Permit2SupportTest is Test, DeployPermit2 {
     IPoolManager internal manager;
     SpryHook internal hook;
@@ -101,7 +101,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         lp.addLiquidity(key, 1e22, 1e22, address(this));
 
         // Owner: tokens + the standard one-time approval to Permit2 itself.
-        // After this, swaps only need a Permit2-signed message — no further
+        // After this, swaps only need a Permit2-signed message, no further
         // token-level approval to the router.
         deal(address(token0), owner, 1e24);
         deal(address(token1), owner, 1e24);
@@ -112,7 +112,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
     }
 
     // -----------------------------------------------------------------
-    // Helpers — build + sign a Permit2 PermitSingle message
+    // Helpers, build + sign a Permit2 PermitSingle message
     // -----------------------------------------------------------------
     function _buildPermitSingle(address token, uint160 amount, uint48 expiration)
         internal
@@ -148,7 +148,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
     }
 
     // ---------------------------------------------------------------------
-    // 1. permit2 + swap in ONE multicall — owner never approved the router
+    // 1. permit2 + swap in ONE multicall, owner never approved the router
     //    on token0 directly, only on Permit2 (one-time, done in setUp).
     // ---------------------------------------------------------------------
     function testPermit2PlusSwapInOneCall() public {
@@ -179,7 +179,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         assertGt(amountOut, 0);
         assertEq(t0Before - token0.balanceOf(owner), amount, "owner debited exactly via Permit2");
         assertEq(token1.balanceOf(owner) - t1Before, amountOut, "owner credited amountOut");
-        // Direct token allowance still zero — we never touched it.
+        // Direct token allowance still zero, we never touched it.
         assertEq(token0.allowance(owner, address(router)), 0, "direct allowance untouched");
     }
 
@@ -275,7 +275,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
     }
 
     // ---------------------------------------------------------------------
-    // 5. Wrong signer — Permit2 rejects the permit, the chained swap's
+    // 5. Wrong signer, Permit2 rejects the permit, the chained swap's
     //    settle fails because no allowance exists in Permit2's ledger.
     // ---------------------------------------------------------------------
     function testWrongSignerCausesPermit2SwapRevert() public {
@@ -311,7 +311,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
     }
 
     // ---------------------------------------------------------------------
-    // 6. Expired sigDeadline — Permit2 rejects the permit; swap reverts.
+    // 6. Expired sigDeadline, Permit2 rejects the permit; swap reverts.
     // ---------------------------------------------------------------------
     function testExpiredSigDeadlineCausesPermit2SwapRevert() public {
         uint160 amount = 1e18;
@@ -337,7 +337,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
     }
 
     // ---------------------------------------------------------------------
-    // 7. Front-run resistance — a third party replays the same Permit2
+    // 7. Front-run resistance, a third party replays the same Permit2
     //    signature first. Permit2Forwarder's try/catch swallows the
     //    duplicate-permit revert; the chained swap still completes because
     //    the allowance is now in Permit2's ledger.
@@ -357,7 +357,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
         // Owner's permit2 nonce has bumped; the same sig wouldn't work
         // standalone again.
 
-        // Owner's multicall — the inner permit call reverts inside
+        // Owner's multicall, the inner permit call reverts inside
         // Permit2Forwarder's try/catch, but the swap still works because
         // the allowance is in place from the front-runner's tx.
         bytes[] memory calls = new bytes[](2);
@@ -406,7 +406,7 @@ contract Permit2SupportTest is Test, DeployPermit2 {
     //    non-Permit2 surface.
     // ---------------------------------------------------------------------
     function testDirectPathStillWorks() public {
-        // Owner approves the router directly on token0 — the classic flow.
+        // Owner approves the router directly on token0, the classic flow.
         vm.prank(owner);
         token0.approve(address(router), type(uint256).max);
 

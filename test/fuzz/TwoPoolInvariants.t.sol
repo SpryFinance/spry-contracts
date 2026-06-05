@@ -27,7 +27,7 @@ import {InvariantHandler} from "./InvariantHandler.sol";
 ///         `InvariantHandler` instance, and the campaign fuzzer
 ///         interleaves random operations across both. Every invariant
 ///         then asserts the existing single-pool properties on EACH
-///         pool independently — so any cross-pool state-bleed (e.g.
+///         pool independently, so any cross-pool state-bleed (e.g.
 ///         the hook accidentally keying `_poolWindow` by something
 ///         other than the PoolId) would surface as a violation on the
 ///         "innocent" pool after activity on the "noisy" one.
@@ -102,7 +102,7 @@ contract TwoPoolInvariants is Test {
         lp.addLiquidity(keyBC, 1e22, 1e22, seeder);
 
         // One handler per pool. Each handler shares actors (alice/bob/
-        // carol via makeAddr) — the constructor `deal`s + approves
+        // carol via makeAddr), the constructor `deal`s + approves
         // them independently, which is idempotent for fresh accounts.
         handlerAB = new InvariantHandler(manager, router, lp, keyAB, tokenA, tokenB);
         handlerBC = new InvariantHandler(manager, router, lp, keyBC, tokenB, tokenC);
@@ -181,7 +181,7 @@ contract TwoPoolInvariants is Test {
     }
 
     // ---------------------------------------------------------------------
-    // Invariants — each one asserts the property on BOTH pools.
+    // Invariants, each one asserts the property on BOTH pools.
     // ---------------------------------------------------------------------
 
     function invariant_bothPoolsLiquidityMatchesPositions() public view {

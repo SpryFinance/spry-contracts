@@ -11,7 +11,7 @@ pragma solidity ^0.8.26;
 ///         the flag, leaving no room to repurpose `fee`'s low bits.)
 ///
 /// @dev    All fee values are in V4 pips (1_000_000 = 100%). Zone boundaries
-///         are in per-mille of pool reserves — the same "delta" unit
+///         are in per-mille of pool reserves, the same "delta" unit
 ///         SmartFee uses internally. Linear and exponential coefficients
 ///         are pre-computed by solving the boundary-continuity equations
 ///         (linear: 2-equation/2-unknown; exponential: log + exponential

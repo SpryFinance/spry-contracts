@@ -129,7 +129,7 @@ contract Invariants is Test {
     ///         shift), and a one-block window collects at most a few
     ///         hundred swaps under the campaign. `1e9` is several orders
     ///         of magnitude above any realistic accumulation and several
-    ///         dozen orders below the saturation threshold — a failure
+    ///         dozen orders below the saturation threshold, a failure
     ///         here would mean either a delta-computation bug or an
     ///         overflow path in the cumulative accumulation, both of
     ///         which would corrupt fee dispatch.

@@ -87,7 +87,7 @@ contract InvariantHandler is Test {
 
     function _kFromState() internal view returns (uint256) {
         // K = L^2 since L = sqrt(R0 * R1) for full-range pools. sqrtPriceX96
-        // is intentionally not read here — only liquidity matters for K.
+        // is intentionally not read here, only liquidity matters for K.
         uint128 liquidity = MANAGER.getLiquidity(_poolId());
         return uint256(liquidity) * uint256(liquidity);
     }
@@ -149,7 +149,7 @@ contract InvariantHandler is Test {
     ///         hook's lazy window-reset path. Without this op every
     ///         campaign round would execute inside the genesis block and
     ///         the reset branch in `beforeSwap` would never fire under
-    ///         random fuzzer input. Bounded to [0, 50] blocks per call —
+    ///         random fuzzer input. Bounded to [0, 50] blocks per call,
     ///         large enough to step well past any plausible BLOCK_WINDOW
     ///         immutable, small enough to keep `block.number` realistic.
     function rollBlocks(uint256 n) external {

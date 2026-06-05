@@ -164,7 +164,7 @@ contract ParityTest is Test {
         assertEq(priceAC_post, priceAC_pre, "pool AC price unchanged");
         assertEq(liqAC_post, liqAC_pre, "pool AC liquidity unchanged");
 
-        // LP positions are isolated by (poolId, owner) — V4 stores them
+        // LP positions are isolated by (poolId, owner), V4 stores them
         // under distinct keys, so this contract has positive liquidity in
         // both pools but unrelated addresses have nothing.
         assertGt(lp.positionLiquidity(keyAB, address(this)), 0);

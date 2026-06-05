@@ -12,7 +12,7 @@ import {SmartFeeLib} from "../../contracts/libs/SmartFeeLib.sol";
 ///           4. bob back-runs in the opposite direction to realize his profit
 ///         A static-fee AMM lets the attacker pocket the price impact alice
 ///         paid for. Spry's dynamic fee should make the back-run leg pay a
-///         strictly higher fee than the front-run leg — that asymmetry is
+///         strictly higher fee than the front-run leg, that asymmetry is
 ///         the whole point of the SmartFee curve.
 contract SandwichAttack is ScenarioBase {
     function testSandwichBackrunPaysStrictlyHigherFee() public {
@@ -50,7 +50,7 @@ contract SandwichAttack is ScenarioBase {
     ///         Bob's own front-run already skewed the pool.
     function testSandwichSelfPenalizesEvenWithSmallVictim() public {
         uint256 frontRun = 7e21;
-        uint256 victim   = 1e16; // tiny — alice's swap barely registers
+        uint256 victim   = 1e16; // tiny, alice's swap barely registers
         uint256 backRun  = 7e21;
 
         uint24 frontFee = _peekFee(true, frontRun);
@@ -60,7 +60,7 @@ contract SandwichAttack is ScenarioBase {
         _swapExactIn(bob, false, backRun);
 
         // Bob's own large front-run is enough to push his back-run into a
-        // higher fee zone — the curve self-discourages MEV regardless of
+        // higher fee zone, the curve self-discourages MEV regardless of
         // victim size.
         assertGt(backFee, frontFee, "self-penalty applies");
     }

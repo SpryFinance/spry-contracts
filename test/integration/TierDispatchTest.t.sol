@@ -131,7 +131,7 @@ contract TierDispatchTest is Test {
     }
 
     // ------------------------------------------------------------------
-    // Pin every tier's headline numbers — guards against accidental
+    // Pin every tier's headline numbers, guards against accidental
     // edits to the hardcoded coefficients.
     // ------------------------------------------------------------------
     function testTierParamsAreAsSpecified() public view {

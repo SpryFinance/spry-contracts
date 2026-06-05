@@ -46,7 +46,7 @@ contract CrossPoolIsolation is ScenarioBase {
         token2.approve(address(lp),     type(uint256).max);
         vm.stopPrank();
 
-        // Build pool A/C (where A is one of the existing tokens — pick token0).
+        // Build pool A/C (where A is one of the existing tokens, pick token0).
         (Currency c0, Currency c1) = address(token0) < address(token2)
             ? (Currency.wrap(address(token0)), Currency.wrap(address(token2)))
             : (Currency.wrap(address(token2)), Currency.wrap(address(token0)));
@@ -58,7 +58,7 @@ contract CrossPoolIsolation is ScenarioBase {
             hooks: IHooks(address(hook))
         });
         manager.initialize(keyAC, SQRT_PRICE_1_1);
-        // Seed pool A/C — _addLiquidity helper only knows the base pool key,
+        // Seed pool A/C, _addLiquidity helper only knows the base pool key,
         // so call lp directly for the second pool's seed.
         lp.addLiquidity(keyAC, SEED_LIQUIDITY, SEED_LIQUIDITY, address(this));
     }
@@ -68,7 +68,7 @@ contract CrossPoolIsolation is ScenarioBase {
         (uint128 aliceLiqAB, , ) = _addLiquidity(alice, 1e21, 1e21);
         assertGt(aliceLiqAB, 0);
 
-        // Pool A/C ledger has zero liquidity for alice — per-pool isolation
+        // Pool A/C ledger has zero liquidity for alice, per-pool isolation
         // by V4 position (owner, lower, upper, salt).
         assertEq(lp.positionLiquidity(keyAC, alice), 0, "alice has zero liquidity on pool A/C");
 

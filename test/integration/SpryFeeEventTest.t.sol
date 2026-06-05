@@ -27,7 +27,7 @@ import {SpryFeeParams} from "../../contracts/libs/SpryFeeTypes.sol";
 import {HookMiner} from "../../script/HookMiner.sol";
 
 /// @title SpryFeeEventTest
-/// @notice Locks the semantics of the SpryHook.SpryFee event — the canonical
+/// @notice Locks the semantics of the SpryHook.SpryFee event, the canonical
 ///         off-chain signal a subgraph relies on. Covers:
 ///           * shape (one emission per swap, exactly the right pool id),
 ///           * fee field has the OVERRIDE_FEE_FLAG stripped,
@@ -46,7 +46,7 @@ contract SpryFeeEventTest is Test {
     ERC20Mock internal token0;
     ERC20Mock internal token1;
 
-    // BLUE-CHIP tier — the same setup other hook tests use; gives all
+    // BLUE-CHIP tier, the same setup other hook tests use; gives all
     // three zones (safe / alert / danger) and both dispatch sides plenty
     // of room with a 1e22 liquidity seed.
     int24 internal constant TICK_SPACING = 60;
@@ -318,7 +318,7 @@ contract SpryFeeEventTest is Test {
     // ==================================================================
 
     /// @notice Within one window the event's `cumBefore` of swap N equals
-    ///         the `cumAfter` of swap N-1, regardless of dispatch case —
+    ///         the `cumAfter` of swap N-1, regardless of dispatch case,
     ///         the trajectory the subgraph reconstructs from the event
     ///         stream is contiguous.
     function test_spryFee_trajectoryContiguousWithinWindow() public {

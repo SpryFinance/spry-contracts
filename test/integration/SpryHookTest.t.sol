@@ -177,7 +177,7 @@ contract SpryHookTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // No-liquidity edge case — should fall back to safe-zone fee but the
+    // No-liquidity edge case, should fall back to safe-zone fee but the
     // pool itself will revert because there's nothing to swap against.
     // We assert the fee path doesn't panic by reading state pre-add.
     // ---------------------------------------------------------------------

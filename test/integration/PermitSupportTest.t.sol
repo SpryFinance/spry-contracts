@@ -84,7 +84,7 @@ contract PermitSupportTest is Test {
         token1.approve(address(lp),     type(uint256).max);
         lp.addLiquidity(key, 1e22, 1e22, address(this));
 
-        // Mint balances to owner — but do NOT approve the router.
+        // Mint balances to owner, but do NOT approve the router.
         // The whole point: owner has zero allowance until permit fires.
         token0.mint(owner, 1e24);
         token1.mint(owner, 1e24);
@@ -109,7 +109,7 @@ contract PermitSupportTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 1. permit + swap in a SINGLE tx via multicall — owner never called
+    // 1. permit + swap in a SINGLE tx via multicall, owner never called
     //    approve(), yet the swap succeeds.
     // ---------------------------------------------------------------------
     function testPermitPlusSwapInOneCall() public {
@@ -147,7 +147,7 @@ contract PermitSupportTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 2. Expired permit deadline — the selfPermit's try/catch swallows the
+    // 2. Expired permit deadline, the selfPermit's try/catch swallows the
     //    token-level error, so the multicall continues. But the subsequent
     //    swap reverts with the ERC20 allowance failure (no approval was set).
     // ---------------------------------------------------------------------
@@ -179,7 +179,7 @@ contract PermitSupportTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 4. Wrong signer — sig was made by `attacker`, not `owner`. selfPermit
+    // 4. Wrong signer, sig was made by `attacker`, not `owner`. selfPermit
     //    swallows the bad-sig revert; the swap then reverts on missing allowance.
     // ---------------------------------------------------------------------
     function testWrongSignerCausesSwapRevert() public {
@@ -231,7 +231,7 @@ contract PermitSupportTest is Test {
         // Token nonce has now incremented; the same sig would no longer work.
         assertEq(token0.allowance(owner, address(router)), amountIn, "front-runner set the allowance");
 
-        // Owner's own multicall — selfPermit will revert internally, but
+        // Owner's own multicall, selfPermit will revert internally, but
         // the catch swallows it, and the subsequent swap still works
         // because the allowance is now in place.
         bytes[] memory calls = new bytes[](2);
@@ -251,7 +251,7 @@ contract PermitSupportTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 6. Multicall preserves msg.sender across delegate calls — the swap
+    // 6. Multicall preserves msg.sender across delegate calls, the swap
     //    in calls[1] sees `owner` as the payer, NOT the router itself.
     // ---------------------------------------------------------------------
     function testMulticallPreservesSender() public {
@@ -298,7 +298,7 @@ contract PermitSupportTest is Test {
             SpryRouter.selfPermit,
             (address(token0), amountIn, deadline, v, r, s)
         );
-        // Demand an impossibly high output — swap reverts.
+        // Demand an impossibly high output, swap reverts.
         calls[1] = abi.encodeCall(
             SpryRouter.swapExactInputSingle,
             (key, true, amountIn, type(uint256).max, owner, deadline, "")
@@ -314,7 +314,7 @@ contract PermitSupportTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 8. Bare multicall (no permit involved) — chained swaps in opposite
+    // 8. Bare multicall (no permit involved), chained swaps in opposite
     //    directions. Confirms multicall works for non-permit flows too.
     // ---------------------------------------------------------------------
     function testMulticallBareDoubleSwap() public {

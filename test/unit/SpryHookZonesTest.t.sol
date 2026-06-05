@@ -32,7 +32,7 @@ import {IAllowanceTransfer} from "permit2/src/interfaces/IAllowanceTransfer.sol"
 ///         (cumBefore = 0), so the fee returned by `beforeSwap` is the
 ///         INTEGRAL average of the curve over [0, delta], not the rate at
 ///         the endpoint. A delta deep in the danger zone therefore yields
-///         a marginal somewhere between safeFee and dangerEdgeFee — not
+///         a marginal somewhere between safeFee and dangerEdgeFee, not
 ///         the point-evaluated dangerEdgeFee that an end-rate model would
 ///         return. The assertions below reflect the integral-average
 ///         behavior; the per-zone code paths are still exercised because
@@ -171,8 +171,8 @@ contract SpryHookZonesTest is Test {
     function testHookBeforeSwapFallbackBeyondCap() public {
         // amount0Out > 5x reserve -> delta > 5000 -> the integral covers
         // safe + alert + full danger + a sliver of cap. The marginal is
-        // dominated by the lower-rate zones, landing around 32_000 pips
-        // — between the alert→danger boundary and the cap. Assert the cap-
+        // dominated by the lower-rate zones, landing around 32_000 pips,
+        // between the alert→danger boundary and the cap. Assert the cap-
         // zone branch IS exercised by demanding the marginal exceeds the
         // alert-ramp's max (we couldn't get there without traversing
         // danger + cap) while remaining strictly under the capFee constant.
@@ -195,7 +195,7 @@ contract SpryHookZonesTest is Test {
     }
 
     // -----------------------------------------------------------------
-    // poolWindow() getter — verifies that the public view reflects the
+    // poolWindow() getter, verifies that the public view reflects the
     // internal `_poolWindow` mapping the hook updates on every swap.
     // The getter is exercised 128k times per invariant by the fuzz
     // campaign; this test gives it a deterministic regression target
@@ -243,7 +243,7 @@ contract SpryHookZonesTest is Test {
     function testPoolWindowResetsAfterBlockBoundary() public {
         // Push the cum, advance past BLOCK_WINDOW, then push again with
         // a strictly smaller swap. The post-reset signedCum should equal
-        // the new swap's delta alone — strictly less than the pre-roll
+        // the new swap's delta alone, strictly less than the pre-roll
         // accumulated value.
         _callBeforeSwap(false, int256(2.5e21));  // delta ≈ +250
         (, int128 cumBeforeRoll) = hook.poolWindow(key.toId());
@@ -259,7 +259,7 @@ contract SpryHookZonesTest is Test {
 
     // -----------------------------------------------------------------
     // Cum saturation at int128 bounds. Realistic per-swap delta is
-    // bounded by ±1000, and int128.max is ~1.7 × 10^38 — reaching it
+    // bounded by ±1000, and int128.max is ~1.7 × 10^38, reaching it
     // via organic accumulation would require ~10^35 swaps in one
     // window, vastly beyond any conceivable block. The saturation
     // logic is defensive against integer overflow if a bug or storage
@@ -285,7 +285,7 @@ contract SpryHookZonesTest is Test {
         uint256 packed = uint256(uint64(block.number)) | (uint256(uint128(nearMax)) << 64);
         vm.store(address(hook), slot, bytes32(packed));
 
-        // Confirm the seed via the public getter — pins the storage-
+        // Confirm the seed via the public getter, pins the storage-
         // layout assumption above.
         (uint64 wsSeeded, int128 cumSeeded) = hook.poolWindow(key.toId());
         assertEq(uint256(wsSeeded), block.number, "vm.store windowStart");

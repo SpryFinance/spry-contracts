@@ -26,7 +26,7 @@ import {LPHelper} from "../utils/LPHelper.sol";
 ///         router's single-hop swap entry points actually reaches the
 ///         pool's hook's `beforeSwap`. The default SpryHook ignores
 ///         hookData, so we deploy a purpose-built `RecorderHook` that
-///         emits an event containing the received payload — we then
+///         emits an event containing the received payload, we then
 ///         match that event against what we sent.
 contract HookDataForwardingTest is Test {
     IPoolManager internal manager;

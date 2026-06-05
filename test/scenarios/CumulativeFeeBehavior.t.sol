@@ -25,7 +25,7 @@ import {LPHelper} from "../utils/LPHelper.sol";
 ///         the fee behavior, and documents the observable property the
 ///         cumulative tracker provides.
 ///
-///         All tests use BLUE-CHIP tier (tickSpacing=60) — the same tier
+///         All tests use BLUE-CHIP tier (tickSpacing=60), the same tier
 ///         the rest of the suite uses, ensuring these tests interact with
 ///         the well-trodden curve.
 contract CumulativeFeeBehavior is Test {
@@ -80,7 +80,7 @@ contract CumulativeFeeBehavior is Test {
     }
 
     // ------------------------------------------------------------------
-    // Single swap in a fresh window — must match per-swap dynamic fee.
+    // Single swap in a fresh window, must match per-swap dynamic fee.
     // ------------------------------------------------------------------
     function testFirstSwapInWindowChargesPerSwapRate() public {
         // Tiny swap → stays in safe zone → 0.30%.
@@ -94,7 +94,7 @@ contract CumulativeFeeBehavior is Test {
     }
 
     // ------------------------------------------------------------------
-    // GROWTH case — second same-direction swap in same block pays a
+    // GROWTH case, second same-direction swap in same block pays a
     // strictly higher rate than the first (because cum has grown).
     // ------------------------------------------------------------------
     function testSameDirectionSecondSwapPaysMoreThanFirst() public {
@@ -116,15 +116,15 @@ contract CumulativeFeeBehavior is Test {
     }
 
     // ------------------------------------------------------------------
-    // UNWIND case — reverse-direction swap pays the base safe-zone rate
+    // UNWIND case, reverse-direction swap pays the base safe-zone rate
     // regardless of pool's current cumulative position.
     //
     // This test exercises the shallow case: both pre-swap and reverse
     // stay inside the safe zone (the first swap of 5e20 vs 1e22 reserves
     // contributes delta ≈ -32; the reverse swap of 1e17 contributes
     // delta ≈ +10; cum trajectory is 0 → -32 → -22, all in safe). The
-    // deep cases — UNWIND from alert back to safe, and UNWIND from
-    // danger back to alert — are exercised by the two tests below.
+    // deep cases, UNWIND from alert back to safe, and UNWIND from
+    // danger back to alert, are exercised by the two tests below.
     // ------------------------------------------------------------------
     function testReverseSwapPaysSafeRate() public {
         router.swapExactInputSingle(key, true, 5e20, 1, address(this), block.timestamp + 100, "");
@@ -141,10 +141,10 @@ contract CumulativeFeeBehavior is Test {
     }
 
     // ------------------------------------------------------------------
-    // UNWIND case (deep) — cum starts in the alert zone, the reverse
+    // UNWIND case (deep), cum starts in the alert zone, the reverse
     // swap brings it back into the safe zone without crossing zero.
     // The dispatch must hit the UNWIND branch (same sign, smaller
-    // magnitude), returning safeFee — not the alert-ramp rate the
+    // magnitude), returning safeFee, not the alert-ramp rate the
     // pre-cum endpoint sits at.
     // ------------------------------------------------------------------
     function testUnwindFromAlertBackToSafePaysSafeRate() public {
@@ -178,15 +178,15 @@ contract CumulativeFeeBehavior is Test {
         // integration). With safeFee = 3000 pips (0.30%) the reverse
         // swap receives nearly the full no-fee CPMM output. With the
         // pool now skewed (R0 ≈ 1.99e22, R1 ≈ 5e21 after the pre-push),
-        // 1.5e21 in token1 should yield ≥ 4e21 in token0 — well above
+        // 1.5e21 in token1 should yield ≥ 4e21 in token0, well above
         // the ≤ 4e21 floor any higher zone fee would produce.
         assertGt(received, 4e21, "reverse-swap output too low - UNWIND did not pay safeFee");
     }
 
     // ------------------------------------------------------------------
-    // UNWIND case (very deep) — cum starts in the danger zone, the
+    // UNWIND case (very deep), cum starts in the danger zone, the
     // reverse swap brings it back into the alert zone without crossing
-    // zero. Same dispatch branch, same safeFee — pinned against a
+    // zero. Same dispatch branch, same safeFee, pinned against a
     // refactor that might forget to short-circuit on UNWIND and
     // instead integrate the (expensive, very-high-rate) curve from
     // dangerLow back to alertLow.
@@ -220,7 +220,7 @@ contract CumulativeFeeBehavior is Test {
 
         // UNWIND from danger pays safeFee. The pool is heavily skewed
         // after three pre-swaps (R0 ≈ 4e22, R1 ≈ 2.5e21), so 5e21 in
-        // token1 should fetch a sizable amount of token0 — well above
+        // token1 should fetch a sizable amount of token0, well above
         // what a multi-bps fee would leave.
         assertGt(received, 1e22, "reverse-swap output too low - UNWIND from danger did not pay safeFee");
     }
@@ -238,7 +238,7 @@ contract CumulativeFeeBehavior is Test {
         // Pre-push: exactInput 6.67e21 token1 (zeroForOne=false). The
         // SmartFeeLib delta formula gives `delta = +1000 · amount0Out /
         // reserve0`. With amount0Out_implied ≈ 4e21 against reserve0 =
-        // 1e22, delta ≈ +400 — solidly inside right alert (safeHigh=334,
+        // 1e22, delta ≈ +400, solidly inside right alert (safeHigh=334,
         // alertHigh=1000).
         router.swapExactInputSingle(key, false, 6.67e21, 1, address(this), block.timestamp + 100, "");
 
@@ -269,7 +269,7 @@ contract CumulativeFeeBehavior is Test {
     // ------------------------------------------------------------------
     // Right-side mirror of testUnwindFromDangerBackToAlertPaysSafeRate.
     // Two large same-direction swaps push cum past alertHigh = 1000?
-    // No — bounded under dangerHigh = 5000 actually. Wait: right-side
+    // No, bounded under dangerHigh = 5000 actually. Wait: right-side
     // danger is the range (alertHigh, dangerHigh] = (1000, 5000]. To
     // enter right danger we need cum > 1000, but a single swap's delta
     // is bounded by +1000 (asymptotic). So a *second* swap is required.
@@ -278,7 +278,7 @@ contract CumulativeFeeBehavior is Test {
         // Two same-direction pre-swaps. After the first cum ≈ +400;
         // after the second the reserves are skewed enough that the
         // second swap's delta is smaller (~+286), landing cum near
-        // +686 — past alertEnd_right = ... wait, alert RIGHT ends at
+        // +686, past alertEnd_right = ... wait, alert RIGHT ends at
         // alertHigh = 1000. The danger zone is (1000, 5000]. To enter
         // it we need cum > 1000. Two swaps won't get there.
         //
@@ -362,7 +362,7 @@ contract CumulativeFeeBehavior is Test {
     }
 
     // ------------------------------------------------------------------
-    // FLIP case — a single swap that crosses zero. Pays a weighted
+    // FLIP case, a single swap that crosses zero. Pays a weighted
     // average of safeFee (unwind half) and curve rate (growth half).
     // ------------------------------------------------------------------
     function testCrossZeroSwapPaysWeightedAverage() public {
@@ -376,14 +376,14 @@ contract CumulativeFeeBehavior is Test {
         router.swapExactInputSingle(key, false, 6e20, 1, address(this), block.timestamp + 100, "");
         uint256 received = token0.balanceOf(address(this)) - t0Before;
 
-        // We don't pin a specific number — just confirm the swap succeeds
+        // We don't pin a specific number, just confirm the swap succeeds
         // and we receive a non-trivial output (proving the curve evaluated
         // sanely across the sign flip).
         assertGt(received, 0, "flip swap completes with positive output");
     }
 
     // ------------------------------------------------------------------
-    // Window reset — across a block boundary, the cumulative resets and
+    // Window reset, across a block boundary, the cumulative resets and
     // a subsequent same-direction big swap pays the per-swap rate (not
     // the elevated rate that would apply if cum had accumulated).
     // ------------------------------------------------------------------
@@ -397,14 +397,14 @@ contract CumulativeFeeBehavior is Test {
         router.swapExactInputSingle(key, true, 3e20, 1, address(this), block.timestamp + 100, "");
         uint256 received_sameBlock = token1.balanceOf(address(this)) - t1Before_sameBlock;
 
-        // Roll to next block — window expires; cum resets to 0.
+        // Roll to next block, window expires; cum resets to 0.
         vm.roll(block.number + 1);
 
         // Same large follow-up swap in the FRESH block: cum starts at 0,
         // this swap's own delta dictates the curve point. With slightly
         // smaller fee, the swap receives slightly MORE output (even though
         // pool has moved further, the fee saving may not fully cover the
-        // additional price impact — so we only assert the swap COMPLETES
+        // additional price impact, so we only assert the swap COMPLETES
         // and returns a sensible amount; the precise comparison is too
         // noisy at this scale to be a useful regression target).
         router.swapExactInputSingle(key, true, 3e20, 1, address(this), block.timestamp + 100, "");
@@ -413,7 +413,7 @@ contract CumulativeFeeBehavior is Test {
     }
 
     // ------------------------------------------------------------------
-    // Multi-pool isolation — cum on pool A doesn't affect pool B.
+    // Multi-pool isolation, cum on pool A doesn't affect pool B.
     // ------------------------------------------------------------------
     function testCumulativeIsPerPool() public {
         // Create a second pool (different token pair → different poolId).
@@ -447,7 +447,7 @@ contract CumulativeFeeBehavior is Test {
         // Run a big swap on key1.
         router.swapExactInputSingle(key, true, 5e20, 1, address(this), block.timestamp + 100, "");
 
-        // A subsequent swap on key2 should still complete — key2's cum
+        // A subsequent swap on key2 should still complete, key2's cum
         // is independent of key1's. We can't precisely compare to baseline
         // because the second pool's state may have changed, but the swap
         // executing successfully is the test of pool isolation: if cum

@@ -101,7 +101,7 @@ abstract contract ScenarioBase is Test {
     }
 
     // -----------------------------------------------------------------
-    // LP helpers — wrap the LPHelper API so individual scenarios stay
+    // LP helpers, wrap the LPHelper API so individual scenarios stay
     // terse. Each `owner` gets a unique V4 position (per-owner salt),
     // matching the canonical Uniswap PositionManager design.
     // -----------------------------------------------------------------

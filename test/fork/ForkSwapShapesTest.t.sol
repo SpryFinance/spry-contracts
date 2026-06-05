@@ -200,7 +200,7 @@ contract ForkSwapShapesTest is Test {
         assertEq(tokenA.balanceOf(address(this)) - tokABefore, received);
         assertEq(ethBefore - address(this).balance, 1 ether);
 
-        // Confirm we can still pull liquidity out — remove a sliver of LP.
+        // Confirm we can still pull liquidity out, remove a sliver of LP.
         PoolId pid = keyETH.toId();
         uint128 liq = manager.getLiquidity(pid);
         uint128 burnAmount = uint128(uint256(liq) / 10);
@@ -245,7 +245,7 @@ contract ForkSwapShapesTest is Test {
         assertGt(out, 0, "final-currency output is non-zero");
         assertEq(aBefore - tokenA.balanceOf(address(this)), 1e18, "input debited exactly");
         assertEq(tokenC.balanceOf(address(this)) - cBefore, out, "output credited exactly");
-        // Intermediate balance unchanged by the multi-hop — the unlock
+        // Intermediate balance unchanged by the multi-hop, the unlock
         // callback settled net deltas in one atomic flush.
         assertEq(tokenB.balanceOf(address(this)), bBefore, "tokenB transit balance unchanged");
     }
@@ -279,7 +279,7 @@ contract ForkSwapShapesTest is Test {
         uint256 c0 = tokenC.balanceOf(address(this)) - cBefore;
         assertEq(b0 + c0, out0 + out1, "router-reported amounts match balance delta");
 
-        // Sum of withdrawals must equal or exceed the principal — balanced
+        // Sum of withdrawals must equal or exceed the principal, balanced
         // swap flow leaves the spot price untouched, so any positive
         // delta is pure fee accrual against the live PoolManager.
         assertGe(out0 + out1, aIn + bIn, "LP value never decreases under balanced flow");

@@ -16,7 +16,7 @@ import {ScenarioBase} from "./ScenarioBase.sol";
 contract FeeAccrualBenefit is ScenarioBase {
     /// @dev Alice provides liquidity; the trader runs balanced two-way
     ///      swaps so impermanent loss is minimal. Alice withdraws and
-    ///      ends up strictly richer than she started — her own position
+    ///      ends up strictly richer than she started, her own position
     ///      accrued fees in proportion to its share of pool depth.
     function testLPAccruesFeesOnOwnPosition() public {
         uint256 aliceIn0 = 5e20;
@@ -55,7 +55,7 @@ contract FeeAccrualBenefit is ScenarioBase {
         (uint128 aliceLiq, , ) = _addLiquidity(alice, 5e20, 5e20);
         assertGt(aliceLiq, 0);
 
-        // 2. Trader runs the fee-generating swap window — BEFORE Bob enters.
+        // 2. Trader runs the fee-generating swap window, BEFORE Bob enters.
         for (uint256 i = 0; i < 25; ++i) {
             _swapExactIn(carol, true,  3e20);
             _swapExactIn(carol, false, 3e20);
@@ -67,7 +67,7 @@ contract FeeAccrualBenefit is ScenarioBase {
         //    under the per-owner-position model he gets ~zero.
         _driveByLP(bob);
 
-        // 4. Sanity: Alice can still claim her fee share — the drive-by
+        // 4. Sanity: Alice can still claim her fee share, the drive-by
         //    didn't erase it.
         _assertAliceStillEarnedFees(aliceLiq);
     }

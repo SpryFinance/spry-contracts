@@ -46,7 +46,7 @@ import {SpryFeeParams} from "./libs/SpryFeeTypes.sol";
 ///         distinct V4 pools.
 ///
 /// @dev    The hook MUST be deployed at an address whose low 14 bits
-///         match `permissionsFlags()` — use the included HookMiner. Other
+///         match `permissionsFlags()`. Use the included HookMiner. Other
 ///         IHooks entry points are implemented as no-ops for interface
 ///         completeness and only revert if called by anyone other than the
 ///         PoolManager.
@@ -107,7 +107,7 @@ contract SpryHook is IHooks {
     // Events
     // -------------------------------------------------------------------
 
-    /// @notice Emitted by `beforeSwap` on every swap against a Spry pool —
+    /// @notice Emitted by `beforeSwap` on every swap against a Spry pool,
     ///         the hook's only event and the canonical source for indexing
     ///         Spry-specific data that V4's `Swap` event and an end-of-block
     ///         `eth_call` cannot reconstruct: the block-windowed cumulative
@@ -120,7 +120,7 @@ contract SpryHook is IHooks {
     /// @param cumAfter     signed cumulative after the swap (equals the
     ///                     persisted `signedCum` post-swap; int128-saturated)
     /// @param fee          resolved LP fee in pips (1e6 = 100%), WITHOUT the
-    ///                     OVERRIDE flag — the clean per-swap dynamic fee
+    ///                     OVERRIDE flag, the clean per-swap dynamic fee
     /// @param zone         fee-curve zone of `cumAfter`:
     ///                     0 safe / 1 alert / 2 danger / 3 cap
     /// @param dispatchCase 0 Growth / 1 Unwind / 2 Flip
@@ -177,11 +177,11 @@ contract SpryHook is IHooks {
     }
 
     // -------------------------------------------------------------------
-    // External — non-payable
+    // External: non-payable
     // -------------------------------------------------------------------
 
     // ---------------------------------------------------------------------
-    // beforeSwap — cumulative-aware tiered fee dispatch (integral mode).
+    // beforeSwap: cumulative-aware tiered fee dispatch (integral mode).
     //
     // Three cases keyed off how this swap shifts the pool's running
     // signed cumulative delta:
@@ -241,7 +241,7 @@ contract SpryHook is IHooks {
         // Save the new cumulative state, saturating to int128 bounds
         // defensively. Per-swap signedDelta is asymptotically bounded by
         // ±1000 (constant-product reserve cap), so realistic |cum| stays
-        // O(10^4) per window — vastly below int128.max ≈ 1.7e38. The
+        // O(10^4) per window, vastly below int128.max ≈ 1.7e38. The
         // clamp catches state-corruption / hand-seeded edge cases only;
         // it never fires under normal operation.
         if (cumAfter > type(int128).max) cumAfter = type(int128).max;
@@ -274,7 +274,7 @@ contract SpryHook is IHooks {
     }
 
     // -------------------------------------------------------------------
-    // External — view
+    // External: view
     //
     // The IHooks pass-through entry points are permissioned to PoolManager
     // only so they can never be called externally and cannot be used as a
@@ -373,7 +373,7 @@ contract SpryHook is IHooks {
     }
 
     // -------------------------------------------------------------------
-    // External — pure
+    // External: pure
     // -------------------------------------------------------------------
 
     /// @notice Public view-equivalent of the internal tier dispatch.
@@ -385,7 +385,7 @@ contract SpryHook is IHooks {
     }
 
     // -------------------------------------------------------------------
-    // Public — pure
+    // Public: pure
     // -------------------------------------------------------------------
 
     /// @notice The 14-bit flag set this hook's deployment address must match.
@@ -397,11 +397,11 @@ contract SpryHook is IHooks {
     }
 
     // -------------------------------------------------------------------
-    // Internal — pure
+    // Internal: pure
     // -------------------------------------------------------------------
 
     /// @dev Path-independent three-case fee dispatch. Thin wrapper over
-    ///      `SmartFeeLib.marginalFee` — kept as an internal entry point so
+    ///      `SmartFeeLib.marginalFee`, kept as an internal entry point so
     ///      `beforeSwap` reads as a flat sequence of hook concerns
     ///      (load, accumulate, dispatch, persist) rather than mixing
     ///      the fee-curve detail into the hook body.
@@ -428,7 +428,7 @@ contract SpryHook is IHooks {
     }
 
     // ---------------------------------------------------------------------
-    // Tier registry — five hardcoded curve parameter sets returned as
+    // Tier registry: five hardcoded curve parameter sets returned as
     // `pure` (bytecode immutables, no SLOAD at runtime).
     // ---------------------------------------------------------------------
     function _tierParams(uint8 tier) internal pure returns (SpryFeeParams memory) {
@@ -441,7 +441,7 @@ contract SpryHook is IHooks {
     }
 
     // -------------------------------------------------------------------
-    // Private — pure
+    // Private: pure
     //
     // All five tier coefficient sets are derived from the tier's boundary
     // table (4 fee values × 6 zone bounds) by solving for C0 continuity
@@ -450,7 +450,7 @@ contract SpryHook is IHooks {
     // into bytecode as `pure` immutables.
     // -------------------------------------------------------------------
 
-    /// @dev Tier 0 — STABLE.  safe ±0.01% / alert→0.05% / danger→0.25% / cap 0.50%
+    /// @dev Tier 0: STABLE.  safe ±0.01% / alert→0.05% / danger→0.25% / cap 0.50%
     function _tierStable() private pure returns (SpryFeeParams memory) {
         return SpryFeeParams({
             safeLow:     -500, safeHigh:     500,
@@ -467,7 +467,7 @@ contract SpryHook is IHooks {
         });
     }
 
-    /// @dev Tier 1 — LIKE-ASSET.  safe ±0.05% / alert→0.20% / danger→0.50% / cap 1.00%
+    /// @dev Tier 1: LIKE-ASSET.  safe ±0.05% / alert→0.20% / danger→0.50% / cap 1.00%
     function _tierLikeAsset() private pure returns (SpryFeeParams memory) {
         return SpryFeeParams({
             safeLow:     -350, safeHigh:     400,
@@ -484,7 +484,7 @@ contract SpryHook is IHooks {
         });
     }
 
-    /// @dev Tier 2 — BLUE-CHIP.  safe ±0.30% / alert→2.00% / danger→5.00% / cap 5.50%
+    /// @dev Tier 2: BLUE-CHIP.  safe ±0.30% / alert→2.00% / danger→5.00% / cap 5.50%
     function _tierBlueChip() private pure returns (SpryFeeParams memory) {
         return SpryFeeParams({
             safeLow:     -250, safeHigh:    334,
@@ -501,7 +501,7 @@ contract SpryHook is IHooks {
         });
     }
 
-    /// @dev Tier 3 — VOLATILE.  safe ±0.50% / alert→3.00% / danger→7.50% / cap 9.00%
+    /// @dev Tier 3: VOLATILE.  safe ±0.50% / alert→3.00% / danger→7.50% / cap 9.00%
     function _tierVolatile() private pure returns (SpryFeeParams memory) {
         return SpryFeeParams({
             safeLow:     -150, safeHigh:    200,
@@ -518,7 +518,7 @@ contract SpryHook is IHooks {
         });
     }
 
-    /// @dev Tier 4 — EXOTIC.  safe ±1.00% / alert→5.00% / danger→9.50% / cap 9.90%
+    /// @dev Tier 4: EXOTIC.  safe ±1.00% / alert→5.00% / danger→9.50% / cap 9.90%
     function _tierExotic() private pure returns (SpryFeeParams memory) {
         return SpryFeeParams({
             safeLow:      -75, safeHigh:    100,

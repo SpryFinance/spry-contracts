@@ -81,7 +81,7 @@ contract AsymmetricDecimals is Test {
     }
 
     function _initSqrtPrice() internal pure returns (uint160) {
-        // Use 1:1 for simplicity in tests — the property we're testing is
+        // Use 1:1 for simplicity in tests, the property we're testing is
         // robustness across extreme virtual-reserve ratios, which we
         // create by exercising large swap sizes.
         return 1 << 96;

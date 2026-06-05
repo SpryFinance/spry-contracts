@@ -209,7 +209,7 @@ contract RecipientIsSelfTest is Test {
     }
 
     // -------------------------------------------------------------------
-    // Liquidity entry points — REMOVED. Router has no addLiquidity /
+    // Liquidity entry points, REMOVED. Router has no addLiquidity /
     // removeLiquidity / *ViaPermit2 LP functions; LP UX is delegated to
     // Uniswap's PositionManager. The InvalidRecipient guard tested above
     // only applies to the swap entry points that remain on the router.

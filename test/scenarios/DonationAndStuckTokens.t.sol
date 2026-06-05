@@ -8,7 +8,7 @@ import {ScenarioBase} from "./ScenarioBase.sol";
 ///           1. Raw ERC20 transfers directly into the PoolManager (bypassing
 ///              `sync`/`settle`) do NOT alter pool accounting and cannot
 ///              poison the dynamic-fee algorithm. The "donated" tokens are
-///              effectively stuck — they remain unaccounted, and the next
+///              effectively stuck, they remain unaccounted, and the next
 ///              real settle() picks them up cleanly only if a caller
 ///              completes the proper sync/settle dance for that currency.
 ///           2. ERC20 transferred directly into the SpryRouter sits there
@@ -26,7 +26,7 @@ contract DonationAndStuckTokens is ScenarioBase {
         vm.prank(alice);
         token0.transfer(address(manager), donation);
 
-        // The pool's accounting is unaffected — sqrtPriceX96 and liquidity
+        // The pool's accounting is unaffected, sqrtPriceX96 and liquidity
         // are derived from settled positions, not raw balances.
         assertEq(_sqrtPriceX96(), priceBefore, "price unchanged by donation");
         assertEq(_poolLiquidity(), liqBefore, "liquidity unchanged by donation");
@@ -57,7 +57,7 @@ contract DonationAndStuckTokens is ScenarioBase {
         try lp.removeLiquidity(key, 1, carol, carol) returns (uint256, uint256) {} catch {}
         vm.stopPrank();
 
-        // The router still holds the stuck tokens — they didn't leak to carol.
+        // The router still holds the stuck tokens, they didn't leak to carol.
         assertEq(token0.balanceOf(address(router)), stuck, "stuck tokens still in router");
         // Carol may have spent some of her own tokens swapping, but she did
         // not somehow acquire MORE token0 than she started with from the stuck stash.

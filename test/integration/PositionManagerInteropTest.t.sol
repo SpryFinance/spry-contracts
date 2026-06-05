@@ -47,7 +47,7 @@ import {SpryRouter} from "../../contracts/SpryRouter.sol";
 ///              feeGrowthInside accounting keyed by salt = bytes32(tokenId)).
 ///           4. Alice decreases her position via PositionManager. The
 ///              returned amounts include principal + her fee share.
-///           5. We assert she gets MORE out than she put in — V4's per-
+///           5. We assert she gets MORE out than she put in, V4's per-
 ///              position fee accounting protects late LPs from being
 ///              drained by an early decrease-then-rejoin attack.
 contract PositionManagerInteropTest is Test, DeployPermit2 {
@@ -189,7 +189,7 @@ contract PositionManagerInteropTest is Test, DeployPermit2 {
         uint256 t1After = token1.balanceOf(alice);
 
         // She must end up with non-trivial token balances back. We don't
-        // assert a specific numeric profit — the goal is to prove the
+        // assert a specific numeric profit, the goal is to prove the
         // interop works end-to-end. The fairness assertion lives in
         // FeeAccrualBenefit; this test pins the *integration*.
         assertGt(t0After, t0Before, "alice received token0 back");
@@ -226,7 +226,7 @@ contract PositionManagerInteropTest is Test, DeployPermit2 {
             tickLower,
             tickUpper,
             uint256(mintLiquidity),
-            uint256(1e22),       // amount0Max — generous cap
+            uint256(1e22),       // amount0Max, generous cap
             uint256(1e22),       // amount1Max
             alice,
             bytes("")
@@ -247,7 +247,7 @@ contract PositionManagerInteropTest is Test, DeployPermit2 {
 
         // Carol runs five balanced two-way swap pairs. Each pair starts
         // from price ≈ 1 and returns to price ≈ 1, so price never
-        // approaches the position's bounds — fees accrue purely from
+        // approaches the position's bounds, fees accrue purely from
         // the dynamic-fee dispatch on a normal in-range trajectory.
         for (uint256 i = 0; i < 5; ++i) {
             vm.prank(carol);

@@ -40,7 +40,7 @@ contract SwapShapeMatrixTest is Test {
     ERC20Mock internal tokenC;
 
     PoolKey internal keyAB;     // ERC20 pair
-    PoolKey internal keyEthA;   // (native ETH, tokenA)  — currency0 = ETH
+    PoolKey internal keyEthA;   // (native ETH, tokenA), currency0 = ETH
     PoolKey internal keyEthB;   // (native ETH, tokenB)
     PoolKey internal keyBC;     // ERC20 pair
 
@@ -66,7 +66,7 @@ contract SwapShapeMatrixTest is Test {
         require(address(hook) == predicted, "hook addr mismatch");
 
         // Make three tokens whose addresses are all greater than address(0)
-        // (which they will be — EVM contract addresses are never zero).
+        // (which they will be, EVM contract addresses are never zero).
         ERC20Mock a = new ERC20Mock();
         ERC20Mock b = new ERC20Mock();
         ERC20Mock c = new ERC20Mock();
@@ -210,7 +210,7 @@ contract SwapShapeMatrixTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 3. Recipient distinct from msg.sender — aggregator pattern.
+    // 3. Recipient distinct from msg.sender, aggregator pattern.
     // ---------------------------------------------------------------------
     function testRecipientDistinctFromSender() public {
         uint256 aliceABefore = tokenA.balanceOf(alice);
@@ -272,7 +272,7 @@ contract SwapShapeMatrixTest is Test {
         uint256 ethBefore = address(this).balance;
 
         router.swapExactInputSingle{value: 1 ether}(
-            keyAB,                 // ERC20-only pool — never touches msg.value
+            keyAB,                 // ERC20-only pool, never touches msg.value
             true,
             1e18,
             1,

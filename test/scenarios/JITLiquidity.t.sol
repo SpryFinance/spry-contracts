@@ -43,7 +43,7 @@ contract JITLiquidity is ScenarioBase {
         assertFalse(gainedBoth, "JIT must not yield more of BOTH tokens");
 
         // Existing LP (this contract) shouldn't be worse off than they would
-        // have been without the JIT — verified by their liquidity unchanged.
+        // have been without the JIT, verified by their liquidity unchanged.
         // (Their position is the same `seedLiq`; the swap's fee accrued
         //  proportionally to both seed and JIT positions.)
         uint128 seedAfter = _poolLiquidity();

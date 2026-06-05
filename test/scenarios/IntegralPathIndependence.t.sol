@@ -16,7 +16,7 @@ import {ScenarioBase} from "./ScenarioBase.sol";
 ///         a same-direction swap into N pieces within one block ALWAYS
 ///         pays at least as much total fee as one big swap of the same
 ///         total amount. Once the trajectory reaches the alert zone the
-///         inequality is strict — splitting is actively costly. The
+///         inequality is strict, splitting is actively costly. The
 ///         mechanism is geometric: each smaller piece's signed delta is
 ///         computed against post-previous-swap reserves which are more
 ///         imbalanced, so the cumulative the curve is integrated over
@@ -24,7 +24,7 @@ import {ScenarioBase} from "./ScenarioBase.sol";
 ///         per-piece fee rate above the big-swap rate.
 contract IntegralPathIndependence is ScenarioBase {
     // ------------------------------------------------------------------
-    // Headline test — splitter cannot beat a big swap once the trajectory
+    // Headline test, splitter cannot beat a big swap once the trajectory
     // crosses into the alert zone.
     // ------------------------------------------------------------------
 
@@ -56,7 +56,7 @@ contract IntegralPathIndependence is ScenarioBase {
     }
 
     // ------------------------------------------------------------------
-    // Symmetric test — same property on the OTHER direction.
+    // Symmetric test, same property on the OTHER direction.
     // ------------------------------------------------------------------
 
     function testAlertCrossingSplitterPaysStrictlyMoreOneForZero() public {
@@ -83,14 +83,14 @@ contract IntegralPathIndependence is ScenarioBase {
     }
 
     // ------------------------------------------------------------------
-    // Safe-zone trajectories — both whole and split pay flat safeFee, so
+    // Safe-zone trajectories, both whole and split pay flat safeFee, so
     // the outputs differ only by sub-pip rounding inside V4's fee
     // application. We assert near-equality, NOT strict-less.
     // ------------------------------------------------------------------
 
     function testSafeZoneSplitterAndBigSwapEssentiallyEqual() public {
         // A 1e18 input vs 1e22 reserves moves cum by < 100 (well under
-        // safeHigh=334) — entire trajectory stays in safe zone for either
+        // safeHigh=334), entire trajectory stays in safe zone for either
         // path. Both pay safeFee = 3000 pips throughout.
         uint256 swapTotal = 1e18;
         uint256 nSplits = 4;
@@ -115,7 +115,7 @@ contract IntegralPathIndependence is ScenarioBase {
     }
 
     // ------------------------------------------------------------------
-    // Cross-block test — splitting across a block boundary RESTORES the
+    // Cross-block test, splitting across a block boundary RESTORES the
     // splitter's ability to pay less, because the cumulative tracker
     // resets at the start of each new block window. This is the
     // intended behavior: a multi-block patient attacker pays normal
@@ -144,7 +144,7 @@ contract IntegralPathIndependence is ScenarioBase {
 
         // Each split starts in a FRESH window (cumBefore = 0) so each piece
         // pays only its own per-swap rate. The cumulative reset removes the
-        // per-block "splitter penalty" the in-block test demonstrated —
+        // per-block "splitter penalty" the in-block test demonstrated,
         // outputs match the big swap within rounding noise (sub-wei per
         // 3e21 tokens). The point: the protection is SCOPED to the block
         // window; a patient multi-block attacker doesn't get punished.

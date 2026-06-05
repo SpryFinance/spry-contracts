@@ -30,7 +30,7 @@ import {LPHelper} from "../utils/LPHelper.sol";
 ///         the same convention, integrators can call the quoter with the
 ///         same path they'll pass to the router.
 ///
-///         The quoter doesn't need any Spry-specific code — `V4Quoter` is
+///         The quoter doesn't need any Spry-specific code, `V4Quoter` is
 ///         the canonical Uniswap implementation, audited and unchanged.
 ///         This file exists purely to lock in the equivalence as a
 ///         regression test.
@@ -116,7 +116,7 @@ contract QuoterTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 1. Single-hop exact-input — quote matches actual swap output.
+    // 1. Single-hop exact-input, quote matches actual swap output.
     // ---------------------------------------------------------------------
     function testQuoteExactInputSingleMatchesActual() public {
         uint128 amountIn = 1e18;
@@ -137,7 +137,7 @@ contract QuoterTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 2. Single-hop exact-output — quote matches actual swap input.
+    // 2. Single-hop exact-output, quote matches actual swap input.
     // ---------------------------------------------------------------------
     function testQuoteExactOutputSingleMatchesActual() public {
         uint128 wanted = 1e17;
@@ -158,7 +158,7 @@ contract QuoterTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 3. Multi-hop exact-input — quote matches actual final-currency output.
+    // 3. Multi-hop exact-input, quote matches actual final-currency output.
     //    Both quoter and router use the same forward-path encoding:
     //      exactCurrency = user's input (A)
     //      path[0].intermediateCurrency = B   (output of hop 0)
@@ -204,7 +204,7 @@ contract QuoterTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 4. Multi-hop exact-output — quote matches actual input amount.
+    // 4. Multi-hop exact-output, quote matches actual input amount.
     //    V4 reverse-path encoding (matches our `swapExactOutput`):
     //      exactCurrency = user's output (C)
     //      path[0].intermediateCurrency = A   (user's INPUT)
@@ -250,7 +250,7 @@ contract QuoterTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // 5. The quoter reflects the dynamic fee — a small swap (safe zone)
+    // 5. The quoter reflects the dynamic fee, a small swap (safe zone)
     //    quotes a tighter input/output ratio than a huge swap (danger zone).
     // ---------------------------------------------------------------------
     function testQuoteReflectsDynamicFeeZones() public {
@@ -282,7 +282,7 @@ contract QuoterTest is Test {
     }
 
     // ---------------------------------------------------------------------
-    // Failure modes — quoter surfaces V4's underlying revert wrapped in
+    // Failure modes, quoter surfaces V4's underlying revert wrapped in
     // `UnexpectedRevertBytes`. The wrapping is the contract's way of
     // saying "this was not a valid quote outcome." Integrators that catch
     // quoter calls must handle both `QuoteSwap` (success) and
@@ -336,7 +336,7 @@ contract QuoterTest is Test {
             hooks: IHooks(address(hook))
         });
         manager.initialize(emptyKey, SQRT_PRICE_1_1);
-        // No addLiquidity call — pool has zero in-range liquidity.
+        // No addLiquidity call, pool has zero in-range liquidity.
 
         vm.expectRevert();
         quoter.quoteExactInputSingle(

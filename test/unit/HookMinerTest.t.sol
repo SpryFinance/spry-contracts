@@ -61,7 +61,7 @@ contract HookMinerTest is Test {
     }
 
     function testFindForZeroFlagsAllAddressesMatch() public view {
-        // flags = 0 means we want low 14 bits to be 0 — any address whose
+        // flags = 0 means we want low 14 bits to be 0, any address whose
         // low 14 bits happen to be zero qualifies. Should still succeed.
         (address predicted, ) = harness.findFlags(
             0,

@@ -16,7 +16,7 @@ import {FullMath} from "v4-core/src/libraries/FullMath.sol";
 ///         Both formulas use FullMath.mulDiv to handle the intermediate
 ///         256-bit overflow that occurs at extreme prices.
 ///
-///         `L` is whatever the manager reports as in-range liquidity — equal
+///         `L` is whatever the manager reports as in-range liquidity, equal
 ///         to total liquidity for full-range pools (Spry's recommended
 ///         configuration, on which the IL economics are derived), less for
 ///         concentrated configurations. The formula is exact either way for

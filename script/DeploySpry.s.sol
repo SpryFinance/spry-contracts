@@ -16,13 +16,13 @@ import {HookMiner} from "./HookMiner.sol";
 ///         the BEFORE_SWAP permission bits) and SpryRouter against the
 ///         canonical Uniswap V4 PoolManager. Liquidity management is
 ///         provided by Uniswap's canonical PositionManager (see V4_POSITION_MANAGER
-///         below) — Spry does not redeploy or wrap it.
+///         below); Spry does not redeploy or wrap it.
 /// @dev    Required environment:
 ///           V4_POOL_MANAGER       address of the canonical PoolManager on
 ///                                 the target chain (mainnet, Sepolia, Base, ...)
 ///           V4_POSITION_MANAGER   address of Uniswap's PositionManager on
 ///                                 the target chain. The script does NOT
-///                                 call into it — it verifies the address
+///                                 call into it; it verifies the address
 ///                                 has bytecode so operators don't ship a
 ///                                 deployment that points users at a void.
 ///           SPRY_BLOCK_WINDOW     number of blocks the per-pool cumulative

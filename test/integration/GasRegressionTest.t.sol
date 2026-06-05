@@ -23,7 +23,7 @@ import {LPHelper} from "../utils/LPHelper.sol";
 /// @notice Pins gas-cost ceilings for the four primary swap paths through
 ///         SpryRouter + SpryHook. Each ceiling is set ~30% above the
 ///         current observed cost so a small optimizer drift doesn't fire
-///         a false alarm — but a structural regression (e.g. a refactor
+///         a false alarm, but a structural regression (e.g. a refactor
 ///         that adds an SLOAD per swap, or that mis-inlines a library
 ///         function) will trip the relevant assertion.
 ///
@@ -36,7 +36,7 @@ import {LPHelper} from "../utils/LPHelper.sol";
 ///
 ///         If a future change legitimately moves gas costs (e.g. an
 ///         intentional optimization), update the constants below
-///         deliberately — that single-commit-of-record is the audit trail
+///         deliberately, that single-commit-of-record is the audit trail
 ///         the test is designed to force.
 contract GasRegressionTest is Test {
     IPoolManager internal manager;
@@ -54,7 +54,7 @@ contract GasRegressionTest is Test {
     uint160 internal constant SQRT_PRICE_1_1 = 1 << 96;
 
     // -----------------------------------------------------------------
-    // Gas ceilings — pinned ~30% above observed local cost. Update only
+    // Gas ceilings, pinned ~30% above observed local cost. Update only
     // alongside a deliberate optimization commit.
     // -----------------------------------------------------------------
     uint256 internal constant GAS_CEIL_SAFE_SWAP       = 270_000;
@@ -128,7 +128,7 @@ contract GasRegressionTest is Test {
 
     // ------------------------------------------------------------------
     // 1. Safe zone: tiny swap, |delta| << safeHigh, so the entire
-    //    marginal integration stays inside the safe zone — no
+    //    marginal integration stays inside the safe zone, no
     //    alertArea or dangerArea calls.
     // ------------------------------------------------------------------
     function testGasSafeZoneSwap() public {
@@ -171,7 +171,7 @@ contract GasRegressionTest is Test {
     //    only reachable by pre-pushing the cumulative past ±1000 via
     //    earlier swaps within the same block window. After the pre-
     //    setup the measured swap's marginalFee must integrate over a
-    //    range that spans into danger — invoking PRB-Math E.pow twice
+    //    range that spans into danger, invoking PRB-Math E.pow twice
     //    in the antiderivative computation.
     //
     //    We verify the cum actually landed in danger before claiming
@@ -194,7 +194,7 @@ contract GasRegressionTest is Test {
 
         // Measure: a small same-direction swap. cumBefore is in the
         // danger zone (|cum| ∈ (500, 1000)), cumAfter pushes further
-        // but stays within danger — so dangerArea is exercised end-
+        // but stays within danger, so dangerArea is exercised end-
         // to-end, invoking two E.pow calls in the antiderivative.
         uint256 gasBefore = gasleft();
         router.swapExactInputSingle(keyAB, true, 1e21, 1, address(this), block.timestamp + 100, "");

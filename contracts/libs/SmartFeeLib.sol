@@ -12,7 +12,7 @@ import {SpryFeeParams} from "./SpryFeeTypes.sol";
 /// @notice Spry's dynamic fee curve, parameterized by tier. Given a pool's
 ///         current state, a pending swap, and a tier-specific parameter set,
 ///         returns the LP fee (in V4 pips) to charge for that swap. The
-///         curve has four piecewise regions — safe (constant), alert
+///         curve has four piecewise regions: safe (constant), alert
 ///         (linear ramp), danger (exponential ramp), cap (constant). Bounds
 ///         and coefficients are tier-specific; the structure is the same
 ///         for all tiers.
@@ -40,7 +40,7 @@ library SmartFeeLib {
     /// @param sqrtPriceX96    pool's current price as Q64.96
     /// @param liquidity       pool's in-range liquidity (i.e. the L for the
     ///                       positions whose tick range covers the current
-    ///                       tick — equal to total liquidity for full-range
+    ///                       tick, equal to total liquidity for full-range
     ///                       pools, less for concentrated configurations).
     /// @param zeroForOne      true if swap is token0 -> token1
     /// @param amountSpecified V4 swap amountSpecified: negative = exactIn,
@@ -71,7 +71,7 @@ library SmartFeeLib {
     ///         Returned value, expressed in thousandths of the relevant
     ///         reserve:
     ///           positive  if the swap takes token0 out of the pool
-    ///                     (pool ends with less token0, more token1 —
+    ///                     (pool ends with less token0, more token1,
     ///                     spot price P = R1/R0 moves UP)
     ///           negative  if the swap takes token1 out of the pool
     ///                     (price moves DOWN)
@@ -206,7 +206,7 @@ library SmartFeeLib {
     ///      fee_pips = (a · exp(b · delta / 1000)) / 1e36
     ///
     ///      Computes the exp argument as `(b · delta) / 1000` directly in
-    ///      raw int and wraps the result once — equivalent to but
+    ///      raw int and wraps the result once, equivalent to but
     ///      strictly more precise than the SD59x18-native `wrap(b) ·
     ///      wrap(delta) / wrap(1000)` form, whose intermediate SD59x18
     ///      multiplication floor-divides by 1e18 and loses precision
@@ -228,7 +228,7 @@ library SmartFeeLib {
     // trajectory cumulative move is sliced into individual swaps. Three
     // cases:
     //
-    //   GROWTH — same-sign move with |cumAfter| > |cumBefore|. The
+    //   GROWTH: same-sign move with |cumAfter| > |cumBefore|. The
     //   marginal is the integral average of the curve over the cumulative
     //   interval the swap moves through:
     //
@@ -238,16 +238,16 @@ library SmartFeeLib {
     //
     //   The integral telescopes (F(c_n) − F(c_0) regardless of any
     //   intermediate splits), so splitting a same-direction swap into N
-    //   pieces costs the exact same total fee as one big swap — closing
+    //   pieces costs the exact same total fee as one big swap, closing
     //   the sub-window splitting loophole an end-rate rule would leave
     //   open.
     //
-    //   UNWIND — same-sign move with |cumAfter| ≤ |cumBefore|. The pool
+    //   UNWIND: same-sign move with |cumAfter| ≤ |cumBefore|. The pool
     //   is being moved toward neutral, so the LP gets paid the tier's
     //   base rate (`safeFee`) regardless of where on the curve the
     //   pre-swap cum sat.
     //
-    //   FLIP — opposite strict signs. The swap crosses zero. The unwind
+    //   FLIP: opposite strict signs. The swap crosses zero. The unwind
     //   half [cumBefore, 0] is charged at `safeFee` (same reasoning as
     //   UNWIND); the growth half [0, cumAfter] is charged at the
     //   integral average over that subrange. The two halves are
@@ -306,7 +306,7 @@ library SmartFeeLib {
 
     /// @notice Classifies the dispatch case for a cumulative move from
     ///         `cumBefore` to `cumAfter`, mirroring `marginalFee`'s three
-    ///         branches. Pure label only — does not compute the fee. The
+    ///         branches. Pure label only; does not compute the fee. The
     ///         test suite asserts agreement with `marginalFee` (UNWIND ⇒
     ///         fee == safeFee; GROWTH ⇒ same sign, |after| > |before|;
     ///         FLIP ⇒ strictly opposite signs). A zero-length move
@@ -328,7 +328,7 @@ library SmartFeeLib {
     /// @dev    In integral mode the charged fee is the average of the curve
     ///         over [cumBefore, cumAfter] and can span zones; this reports
     ///         the zone of the single point `cum` (SpryHook passes the
-    ///         post-swap cumulative — where the pool now sits).
+    ///         post-swap cumulative, where the pool now sits).
     /// @return 0 = safe, 1 = alert, 2 = danger, 3 = cap
     function zoneOf(int256 cum, SpryFeeParams memory p) internal pure returns (uint8) {
         if (cum >= int256(p.safeLow) && cum <= int256(p.safeHigh)) return ZONE_SAFE;
@@ -340,7 +340,7 @@ library SmartFeeLib {
     }
 
     /// @dev Piecewise definite integral of the fee curve over [y0, y1] on
-    ///      one side of the curve. Both bounds are positive magnitudes —
+    ///      one side of the curve. Both bounds are positive magnitudes:
     ///      `right == true` integrates over deltas +[y0,y1]; `right == false`
     ///      integrates over deltas −[y1,y0] (the symmetric range on the
     ///      negative side). Stitches the integral across safe → alert →
@@ -442,7 +442,7 @@ library SmartFeeLib {
     ///          = (aExp · 1000) · (expVal1 − expVal0) / (bExp · 1e18)
     ///
     ///      On the left side bExp < 0 and d_signed < 0, so the raw signed
-    ///      result is negative — we take its magnitude (the integral of the
+    ///      result is negative; we take its magnitude (the integral of the
     ///      strictly positive fee curve over the interval).
     function _dangerArea(uint256 y0, uint256 y1, SpryFeeParams memory p, bool right)
         private

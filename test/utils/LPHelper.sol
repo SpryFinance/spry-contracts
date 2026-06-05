@@ -28,7 +28,7 @@ import {IERC20Minimal} from "v4-core/src/interfaces/external/IERC20Minimal.sol";
 ///         Fairness model matches PositionManager: each `owner` parameter
 ///         maps to a unique V4 position via `salt = bytes32(uint256(uint160(owner)))`.
 ///         V4's per-position fee accounting then takes care of pro-rata
-///         fee distribution natively — different owners cannot drain each
+///         fee distribution natively, different owners cannot drain each
 ///         other's fees by being the first to touch the position.
 ///
 ///         One dedicated interop test (test/integration/PositionManagerInteropTest.t.sol)
@@ -76,7 +76,7 @@ contract LPHelper is IUnlockCallback {
     receive() external payable {}
 
     // -----------------------------------------------------------------
-    // Salt = per-owner — what V4's PositionManager does with tokenId.
+    // Salt = per-owner, what V4's PositionManager does with tokenId.
     // -----------------------------------------------------------------
     function _saltFor(address owner) internal pure returns (bytes32) {
         return bytes32(uint256(uint160(owner)));
@@ -141,7 +141,7 @@ contract LPHelper is IUnlockCallback {
     }
 
     // -----------------------------------------------------------------
-    // Unlock callback — tagged dispatch
+    // Unlock callback: tagged dispatch
     // -----------------------------------------------------------------
     function unlockCallback(bytes calldata raw) external onlyPoolManager returns (bytes memory) {
         (uint8 tag, bytes memory payload) = abi.decode(raw, (uint8, bytes));

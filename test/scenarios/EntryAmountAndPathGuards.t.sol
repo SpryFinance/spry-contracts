@@ -117,14 +117,14 @@ contract EntryAmountAndPathGuardsTest is Test {
     }
 
     // -----------------------------------------------------------------
-    // N3 — amount must fit in int256 (i.e. high bit must be clear)
+    // N3, amount must fit in int256 (i.e. high bit must be clear)
     // -----------------------------------------------------------------
     /// The boundary value is `uint256(type(int256).max) + 1 == 2^255`.
     /// Anything at or above that has its sign bit set and would flip
     /// the int256 reinterpretation on the SwapParams.amountSpecified path.
 
     function _aboveInt256Max() internal pure returns (uint256) {
-        // 2^255 — first value whose int256 reinterpretation is negative.
+        // 2^255, first value whose int256 reinterpretation is negative.
         return uint256(type(int256).max) + 1;
     }
 
@@ -218,7 +218,7 @@ contract EntryAmountAndPathGuardsTest is Test {
     }
 
     // -----------------------------------------------------------------
-    // N4 — multi-hop path with repeated currency must revert clearly
+    // N4, multi-hop path with repeated currency must revert clearly
     // -----------------------------------------------------------------
 
     /// @dev Forward path A -> B -> B (last hop has intermediate == prior
