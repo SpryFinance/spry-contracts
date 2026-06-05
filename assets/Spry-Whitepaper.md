@@ -1226,6 +1226,12 @@ to DeFi currency exchanges," arXiv:2404.09090, 2024.
 from technical developments of decentralized crypto exchanges," SSRN
 4495589, 2023.
 
+[19] J. Milionis, C. C. Moallemi, T. Roughgarden, A. L. Zhang, "Automated
+market making and loss-versus-rebalancing," arXiv:2208.06046, 2022.
+
+[20] A. Adams, C. C. Moallemi, S. Reynolds, D. Robinson, "Am-AMM: An
+auction-managed automated market maker," arXiv:2403.03367, 2024.
+
 ---
 
 *Document version*: current. The on-chain code described herein lives at
