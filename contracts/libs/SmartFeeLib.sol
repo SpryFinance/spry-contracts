@@ -24,6 +24,19 @@ import {SpryFeeParams} from "./SpryFeeTypes.sol";
 library SmartFeeLib {
     using SafeCast for *;
 
+    // Dispatch-case labels (mirror `marginalFee`'s three branches) and
+    // fee-curve zone labels (mirror `_feeForDelta`'s four zones), exposed so
+    // SpryHook can tag each swap's `SpryFee` event with the regime it hit.
+    // These are pure classifiers; they never influence the fee math.
+    uint8 internal constant CASE_GROWTH = 0;
+    uint8 internal constant CASE_UNWIND = 1;
+    uint8 internal constant CASE_FLIP   = 2;
+
+    uint8 internal constant ZONE_SAFE   = 0;
+    uint8 internal constant ZONE_ALERT  = 1;
+    uint8 internal constant ZONE_DANGER = 2;
+    uint8 internal constant ZONE_CAP    = 3;
+
     /// @param sqrtPriceX96    pool's current price as Q64.96
     /// @param liquidity       pool's in-range liquidity (i.e. the L for the
     ///                       positions whose tick range covers the current
@@ -289,6 +302,41 @@ library SmartFeeLib {
             uint256 areaUnwind = uint256(p.safeFee) * absBefore;
             return uint24((areaUnwind + areaGrowth) / (absBefore + absAfter));
         }
+    }
+
+    /// @notice Classifies the dispatch case for a cumulative move from
+    ///         `cumBefore` to `cumAfter`, mirroring `marginalFee`'s three
+    ///         branches. Pure label only — does not compute the fee. The
+    ///         test suite asserts agreement with `marginalFee` (UNWIND ⇒
+    ///         fee == safeFee; GROWTH ⇒ same sign, |after| > |before|;
+    ///         FLIP ⇒ strictly opposite signs). A zero-length move
+    ///         (cumBefore == cumAfter) is reported as UNWIND, matching
+    ///         `marginalFee` returning `safeFee`.
+    /// @return 0 = Growth, 1 = Unwind, 2 = Flip
+    function dispatchCase(int256 cumBefore, int256 cumAfter) internal pure returns (uint8) {
+        if (cumBefore == cumAfter) return CASE_UNWIND;
+        bool flipped = (cumBefore > 0 && cumAfter < 0) || (cumBefore < 0 && cumAfter > 0);
+        if (flipped) return CASE_FLIP;
+        uint256 absBefore = cumBefore >= 0 ? uint256(cumBefore) : uint256(-cumBefore);
+        uint256 absAfter  = cumAfter  >= 0 ? uint256(cumAfter)  : uint256(-cumAfter);
+        return absAfter > absBefore ? CASE_GROWTH : CASE_UNWIND;
+    }
+
+    /// @notice Classifies which fee-curve zone a signed cumulative value
+    ///         falls in, mirroring `_feeForDelta`'s four-zone dispatch.
+    ///         Pure label only.
+    /// @dev    In integral mode the charged fee is the average of the curve
+    ///         over [cumBefore, cumAfter] and can span zones; this reports
+    ///         the zone of the single point `cum` (SpryHook passes the
+    ///         post-swap cumulative — where the pool now sits).
+    /// @return 0 = safe, 1 = alert, 2 = danger, 3 = cap
+    function zoneOf(int256 cum, SpryFeeParams memory p) internal pure returns (uint8) {
+        if (cum >= int256(p.safeLow) && cum <= int256(p.safeHigh)) return ZONE_SAFE;
+        if ((cum >= int256(p.alertLow)  && cum <  int256(p.safeLow)) ||
+            (cum >  int256(p.safeHigh)  && cum <= int256(p.alertHigh))) return ZONE_ALERT;
+        if ((cum >= int256(p.dangerLow) && cum <  int256(p.alertLow)) ||
+            (cum >  int256(p.alertHigh) && cum <= int256(p.dangerHigh))) return ZONE_DANGER;
+        return ZONE_CAP;
     }
 
     /// @dev Piecewise definite integral of the fee curve over [y0, y1] on

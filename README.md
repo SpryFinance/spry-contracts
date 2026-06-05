@@ -77,12 +77,13 @@ test/
 ├── unit/             6 suites    SmartFeeLib + integral-mode math +
 │                                  hook coverage (incl. poolWindow getter,
 │                                  cum saturation) + miner.
-├── integration/     13 suites    Router single + multi + branches,
+├── integration/     14 suites    Router single + multi + branches,
 │                                  Permit, Permit2, Quoter,
 │                                  PositionManager interop (full-range +
 │                                  concentrated), tier dispatch,
 │                                  swap-shape matrix, gas regression,
-│                                  V4 hook surface.
+│                                  V4 hook surface, SpryFee event
+│                                  semantics.
 ├── scenarios/       18 suites    Attack simulations: sandwich, JIT,
 │                                  gas-grief, reentrancy, donation,
 │                                  recipient-is-self, first-mint
@@ -100,11 +101,11 @@ test/
                                    used by tests, mirroring
                                    PositionManager's fairness model.
 
-Total: 41 suites / 256 tests
+Total: 42 suites / 264 tests
 ```
 
-Production SLOC: **996**.
-Test SLOC: **6 293**.
+Production SLOC: **1 037**.
+Test SLOC: **6 540**.
 
 ## Build & test
 
@@ -166,7 +167,7 @@ SmartFee derivation operates on.
 
 ## Status
 
-- **256 unit + integration + scenario + invariant + fork tests
+- **264 unit + integration + scenario + invariant + fork tests
   passing**, ~100 % line and function coverage on every library;
   the four single-pool and four two-pool invariants are each verified
   across 128 000 random handler operations (256 rounds × 500 calls)

@@ -981,11 +981,11 @@ pre-deploy checklist.
 
 ## 9. Testing methodology
 
-The repository ships with **256 tests across 41 suites**, all passing
+The repository ships with **264 tests across 42 suites**, all passing
 under the default Foundry profile (no `via_ir`); `forge coverage`
 disables the optimizer automatically for accurate source-line
 instrumentation, so coverage measurements are trustworthy. The suites
-are grouped under `test/unit/` (6), `test/integration/` (13),
+are grouped under `test/unit/` (6), `test/integration/` (14),
 `test/scenarios/` (18), `test/fuzz/` (2), and `test/fork/` (2).
 
 ### 9.1 Unit coverage of the algorithm

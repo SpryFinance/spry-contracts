@@ -97,6 +97,35 @@ contract SpryHook is IHooks {
     }
     mapping(PoolId => PoolWindow) internal _poolWindow;
 
+    /// @notice Emitted by `beforeSwap` on every swap against a Spry pool —
+    ///         the hook's only event and the canonical source for indexing
+    ///         Spry-specific data that V4's `Swap` event and an end-of-block
+    ///         `eth_call` cannot reconstruct: the block-windowed cumulative
+    ///         trajectory, the fee zone, and the dispatch case. Emitted
+    ///         immediately before the V4 `Swap` event for the same pool in
+    ///         the same transaction (one pair per pool hop).
+    /// @param id           the pool's id
+    /// @param cumBefore    signed block-windowed cumulative before the swap
+    ///                     (equals the pool's persisted `signedCum` pre-swap)
+    /// @param cumAfter     signed cumulative after the swap (equals the
+    ///                     persisted `signedCum` post-swap; int128-saturated)
+    /// @param fee          resolved LP fee in pips (1e6 = 100%), WITHOUT the
+    ///                     OVERRIDE flag — the clean per-swap dynamic fee
+    /// @param zone         fee-curve zone of `cumAfter`:
+    ///                     0 safe / 1 alert / 2 danger / 3 cap
+    /// @param dispatchCase 0 Growth / 1 Unwind / 2 Flip
+    /// @param windowId     the active window's start block (`windowStart`);
+    ///                     groups observations from the same block window
+    event SpryFee(
+        PoolId indexed id,
+        int256 cumBefore,
+        int256 cumAfter,
+        uint24 fee,
+        uint8  zone,
+        uint8  dispatchCase,
+        uint64 windowId
+    );
+
     IPoolManager public immutable POOL_MANAGER;
 
     /// @param _poolManager  V4 PoolManager this hook routes to.
@@ -190,6 +219,23 @@ contract SpryHook is IHooks {
         else if (cumAfter < type(int128).min) cumAfter = type(int128).min;
         w.signedCum = int128(cumAfter);
         _poolWindow[pid] = w;
+
+        // Off-chain signal: the cumulative trajectory, fee zone, and dispatch
+        // case are not reconstructible from V4's `Swap` event or an
+        // end-of-block `eth_call` (block-windowed + per-swap state). Emit
+        // them here as the canonical source for indexers. Emitted *before*
+        // V4's `Swap` event for the same hop (PoolManager emits Swap after
+        // returning from beforeSwap), so an indexer naturally pairs each
+        // SpryFee with the immediately-following Swap on the same pool.
+        emit SpryFee(
+            pid,
+            cumBefore,
+            cumAfter,
+            dynamicFee,
+            SmartFeeLib.zoneOf(cumAfter, params_),
+            SmartFeeLib.dispatchCase(cumBefore, cumAfter),
+            w.windowStart
+        );
 
         return (
             IHooks.beforeSwap.selector,
