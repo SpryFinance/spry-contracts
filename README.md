@@ -7,7 +7,7 @@ Spry is a small periphery (one hook + one swap-only router + three
 libraries) deployed against the canonical Uniswap V4 `PoolManager`. Pools
 that use the Spry hook charge takers a fee that scales with how much each
 swap shifts the pool's price *and* with how much the same block has
-already shifted it. Small swaps pay the tier's base rate (1 – 100 bps);
+already shifted it. Small swaps pay the tier's base rate (1 to 100 bps);
 arbitrage-sized swaps pay up to 9.9 %. The excess accrues to LPs through
 V4's standard fee channel.
 
@@ -35,7 +35,7 @@ and the PDF is a concise, figure-driven companion.
 - **Integral-mode marginal fee**: the rate charged for a swap is the
   *average* of the underlying curve over the cumulative interval the
   swap traverses. Splitting a same-direction swap into N pieces inside
-  one window costs **at least as much** as one big swap — the
+  one window costs **at least as much** as one big swap: the
   splitting-attack-resistance theorem is path-independence of the
   integral.
 - **Three-case dispatch** (Growth / Unwind / Flip): the unwind half of
@@ -92,12 +92,12 @@ test/
 │                                  Unwind/Flip, left + right),
 │                                  multi-window-length,
 │                                  IntegralPathIndependence, …
-├── fuzz/             2 suites    Handler-driven stateful invariants —
+├── fuzz/             2 suites    Handler-driven stateful invariants:
 │                                  single-pool + two-pool (128k random
 │                                  ops per invariant, 0 violations).
 ├── fork/             2 suites    Live PoolManager smoke tests
 │                                  (skipped when FORK_RPC_URL unset).
-└── utils/                         LPHelper — per-owner-salt LP shim
+└── utils/                         LPHelper: per-owner-salt LP shim
                                    used by tests, mirroring
                                    PositionManager's fairness model.
 
@@ -128,7 +128,7 @@ produces accurate line numbers. Fork tests are auto-skipped unless
    mines the CREATE2 salt against the canonical `PoolManager` address
    for the target chain. The operator must also set `SPRY_BLOCK_WINDOW`
    to the chain-appropriate value (the `immutable` window length that
-   the cumulative tracker uses — see the comment on
+   the cumulative tracker uses; see the comment on
    `SpryHook.BLOCK_WINDOW` for recommended per-chain numbers).
 2. **Pick a tier**. Set `PoolKey.tickSpacing` to one of `{1, 10, 60,
    200, 1000}`; that picks the dispatched fee curve (STABLE / LIKE-
@@ -143,7 +143,7 @@ produces accurate line numbers. Fork tests are auto-skipped unless
    `PositionManager`. Full-range positions get the entire pool depth
    for the SmartFee curve to work against.
 
-That's it — no custom router on the taker side is required; any V4-
+That's it: no custom router on the taker side is required; any V4-
 aware router or aggregator can swap against a Spry pool and the hook
 will price every swap correctly.
 
@@ -152,7 +152,7 @@ will price every swap correctly.
 Delivering Spry as a Uniswap V4 hook rather than a standalone AMM
 means:
 
-- Zero pool-storage / swap-math attack surface — those live in V4
+- Zero pool-storage / swap-math attack surface: those live in V4
   core, which is widely audited and deployed.
 - First-class native ETH, multi-hop, ERC-6909 claim tokens, and flash
   accounting come for free.
@@ -162,7 +162,7 @@ means:
 Spry pools operate in **full-range** mode (`tickLower = MIN_USABLE_TICK`,
 `tickUpper = MAX_USABLE_TICK`), making liquidity uniform across the
 entire price range. Under that constraint the swap math reduces to the
-constant-product `x · y = k` at the current price — the regime the
+constant-product `x · y = k` at the current price, the regime the
 SmartFee derivation operates on.
 
 ## Status
