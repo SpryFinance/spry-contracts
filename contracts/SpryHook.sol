@@ -54,8 +54,22 @@ contract SpryHook is IHooks {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
 
-    error NotPoolManager();
-    error InvalidTier();
+    // -------------------------------------------------------------------
+    // Type declarations
+    // -------------------------------------------------------------------
+
+    /// @notice Per-pool cumulative-delta state. `signedCum` is the running
+    ///         sum of per-swap signed deltas within the active window; the
+    ///         window resets when `block.number >= windowStart + BLOCK_WINDOW`.
+    ///         Fits in a single storage slot (64 + 128 = 192 bits + padding).
+    struct PoolWindow {
+        uint64  windowStart;
+        int128  signedCum;
+    }
+
+    // -------------------------------------------------------------------
+    // State variables
+    // -------------------------------------------------------------------
 
     /// @notice Number of supported tiers. The dispatch supports indices
     ///         [0, TIER_COUNT). Indices outside this range revert with
@@ -82,20 +96,16 @@ contract SpryHook is IHooks {
     ///         to zero on the next swap.
     uint64 public immutable BLOCK_WINDOW;
 
-    /// @notice Thrown when the constructor is passed `BLOCK_WINDOW = 0`,
-    ///         which would degenerate the cumulative tracker into a no-op
-    ///         (every swap would observe a fresh-window reset).
-    error ZeroBlockWindow();
+    /// @notice The canonical V4 PoolManager this hook routes to.
+    IPoolManager public immutable POOL_MANAGER;
 
-    /// @notice Per-pool cumulative-delta state. `signedCum` is the running
-    ///         sum of per-swap signed deltas within the active window; the
-    ///         window resets when `block.number >= windowStart + BLOCK_WINDOW`.
-    ///         Fits in a single storage slot (64 + 128 = 192 bits + padding).
-    struct PoolWindow {
-        uint64  windowStart;
-        int128  signedCum;
-    }
+    /// @dev Per-pool cumulative-window state. Read externally via
+    ///      `poolWindow(PoolId)`; mutated only by `beforeSwap`.
     mapping(PoolId => PoolWindow) internal _poolWindow;
+
+    // -------------------------------------------------------------------
+    // Events
+    // -------------------------------------------------------------------
 
     /// @notice Emitted by `beforeSwap` on every swap against a Spry pool —
     ///         the hook's only event and the canonical source for indexing
@@ -126,7 +136,35 @@ contract SpryHook is IHooks {
         uint64 windowId
     );
 
-    IPoolManager public immutable POOL_MANAGER;
+    // -------------------------------------------------------------------
+    // Errors
+    // -------------------------------------------------------------------
+
+    /// @notice Thrown when an IHooks entry point is invoked by any caller
+    ///         other than the PoolManager.
+    error NotPoolManager();
+
+    /// @notice Thrown when a swap targets a pool whose `tickSpacing` is not
+    ///         one of the five sanctioned values {1, 10, 60, 200, 1000}.
+    error InvalidTier();
+
+    /// @notice Thrown when the constructor is passed `BLOCK_WINDOW = 0`,
+    ///         which would degenerate the cumulative tracker into a no-op
+    ///         (every swap would observe a fresh-window reset).
+    error ZeroBlockWindow();
+
+    // -------------------------------------------------------------------
+    // Modifiers
+    // -------------------------------------------------------------------
+
+    modifier onlyPoolManager() {
+        if (msg.sender != address(POOL_MANAGER)) revert NotPoolManager();
+        _;
+    }
+
+    // -------------------------------------------------------------------
+    // Constructor
+    // -------------------------------------------------------------------
 
     /// @param _poolManager  V4 PoolManager this hook routes to.
     /// @param _blockWindow  Number of blocks a pool's cumulative window
@@ -138,18 +176,9 @@ contract SpryHook is IHooks {
         BLOCK_WINDOW = _blockWindow;
     }
 
-    modifier onlyPoolManager() {
-        if (msg.sender != address(POOL_MANAGER)) revert NotPoolManager();
-        _;
-    }
-
-    /// @notice The 14-bit flag set this hook's deployment address must match.
-    /// @dev    Only BEFORE_SWAP_FLAG is required for dynamic-fee hooks; the
-    ///         RETURNS_DELTA variant would only be needed if we also wanted
-    ///         to modify the swap amounts, which we don't.
-    function permissionsFlags() public pure returns (uint160) {
-        return Hooks.BEFORE_SWAP_FLAG;
-    }
+    // -------------------------------------------------------------------
+    // External — non-payable
+    // -------------------------------------------------------------------
 
     // ---------------------------------------------------------------------
     // beforeSwap — cumulative-aware tiered fee dispatch (integral mode).
@@ -244,25 +273,92 @@ contract SpryHook is IHooks {
         );
     }
 
-    /// @dev Path-independent three-case fee dispatch. Thin wrapper over
-    ///      `SmartFeeLib.marginalFee` — kept as an internal entry point so
-    ///      `beforeSwap` reads as a flat sequence of hook concerns
-    ///      (load, accumulate, dispatch, persist) rather than mixing
-    ///      the fee-curve detail into the hook body.
-    function _computeCumulativeFee(
-        int256 cumBefore,
-        int256 cumAfter,
-        SpryFeeParams memory p
-    ) internal pure returns (uint24) {
-        return SmartFeeLib.marginalFee(cumBefore, cumAfter, p);
+    // -------------------------------------------------------------------
+    // External — view
+    //
+    // The IHooks pass-through entry points are permissioned to PoolManager
+    // only so they can never be called externally and cannot be used as a
+    // re-entry surface.
+    // -------------------------------------------------------------------
+
+    function beforeInitialize(address, PoolKey calldata, uint160) external view onlyPoolManager returns (bytes4) {
+        return IHooks.beforeInitialize.selector;
     }
 
-    /// @notice Public view-equivalent of the internal tier dispatch.
-    ///         Exposes a tier's complete parameter set for external tooling
-    ///         (frontends, indexers, simulators) without touching pool state.
-    /// @param tier the tier index (0..TIER_COUNT-1)
-    function tierParams(uint8 tier) external pure returns (SpryFeeParams memory) {
-        return _tierParams(tier);
+    function afterInitialize(address, PoolKey calldata, uint160, int24)
+        external
+        view
+        onlyPoolManager
+        returns (bytes4)
+    {
+        return IHooks.afterInitialize.selector;
+    }
+
+    function beforeAddLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
+        external
+        view
+        onlyPoolManager
+        returns (bytes4)
+    {
+        return IHooks.beforeAddLiquidity.selector;
+    }
+
+    function afterAddLiquidity(
+        address,
+        PoolKey calldata,
+        ModifyLiquidityParams calldata,
+        BalanceDelta,
+        BalanceDelta,
+        bytes calldata
+    ) external view onlyPoolManager returns (bytes4, BalanceDelta) {
+        return (IHooks.afterAddLiquidity.selector, BalanceDelta.wrap(0));
+    }
+
+    function beforeRemoveLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
+        external
+        view
+        onlyPoolManager
+        returns (bytes4)
+    {
+        return IHooks.beforeRemoveLiquidity.selector;
+    }
+
+    function afterRemoveLiquidity(
+        address,
+        PoolKey calldata,
+        ModifyLiquidityParams calldata,
+        BalanceDelta,
+        BalanceDelta,
+        bytes calldata
+    ) external view onlyPoolManager returns (bytes4, BalanceDelta) {
+        return (IHooks.afterRemoveLiquidity.selector, BalanceDelta.wrap(0));
+    }
+
+    function afterSwap(address, PoolKey calldata, SwapParams calldata, BalanceDelta, bytes calldata)
+        external
+        view
+        onlyPoolManager
+        returns (bytes4, int128)
+    {
+        return (IHooks.afterSwap.selector, 0);
+    }
+
+    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+        external
+        view
+        onlyPoolManager
+        returns (bytes4)
+    {
+        return IHooks.beforeDonate.selector;
+    }
+
+    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
+        external
+        view
+        onlyPoolManager
+        returns (bytes4)
+    {
+        return IHooks.afterDonate.selector;
     }
 
     /// @notice Read a pool's current cumulative-window state. Returns
@@ -274,6 +370,47 @@ contract SpryHook is IHooks {
     function poolWindow(PoolId pid) external view returns (uint64 windowStart, int128 signedCum) {
         PoolWindow memory w = _poolWindow[pid];
         return (w.windowStart, w.signedCum);
+    }
+
+    // -------------------------------------------------------------------
+    // External — pure
+    // -------------------------------------------------------------------
+
+    /// @notice Public view-equivalent of the internal tier dispatch.
+    ///         Exposes a tier's complete parameter set for external tooling
+    ///         (frontends, indexers, simulators) without touching pool state.
+    /// @param tier the tier index (0..TIER_COUNT-1)
+    function tierParams(uint8 tier) external pure returns (SpryFeeParams memory) {
+        return _tierParams(tier);
+    }
+
+    // -------------------------------------------------------------------
+    // Public — pure
+    // -------------------------------------------------------------------
+
+    /// @notice The 14-bit flag set this hook's deployment address must match.
+    /// @dev    Only BEFORE_SWAP_FLAG is required for dynamic-fee hooks; the
+    ///         RETURNS_DELTA variant would only be needed if we also wanted
+    ///         to modify the swap amounts, which we don't.
+    function permissionsFlags() public pure returns (uint160) {
+        return Hooks.BEFORE_SWAP_FLAG;
+    }
+
+    // -------------------------------------------------------------------
+    // Internal — pure
+    // -------------------------------------------------------------------
+
+    /// @dev Path-independent three-case fee dispatch. Thin wrapper over
+    ///      `SmartFeeLib.marginalFee` — kept as an internal entry point so
+    ///      `beforeSwap` reads as a flat sequence of hook concerns
+    ///      (load, accumulate, dispatch, persist) rather than mixing
+    ///      the fee-curve detail into the hook body.
+    function _computeCumulativeFee(
+        int256 cumBefore,
+        int256 cumAfter,
+        SpryFeeParams memory p
+    ) internal pure returns (uint24) {
+        return SmartFeeLib.marginalFee(cumBefore, cumAfter, p);
     }
 
     /// @notice Maps a pool's `tickSpacing` to its tier index. Pool creators
@@ -303,11 +440,15 @@ contract SpryHook is IHooks {
         revert InvalidTier();
     }
 
-    /// @dev All five tier coefficient sets are derived from the tier's
-    ///      boundary table (4 fee values × 6 zone bounds) by solving for
-    ///      C0 continuity at every safe<->alert<->danger transition
-    ///      (linear: 2-equation/2-unknown; exponential: log + exponential
-    ///      isolation), then baked into bytecode as `pure` immutables.
+    // -------------------------------------------------------------------
+    // Private — pure
+    //
+    // All five tier coefficient sets are derived from the tier's boundary
+    // table (4 fee values × 6 zone bounds) by solving for C0 continuity
+    // at every safe<->alert<->danger transition (linear: 2-equation /
+    // 2-unknown; exponential: log + exponential isolation), then baked
+    // into bytecode as `pure` immutables.
+    // -------------------------------------------------------------------
 
     /// @dev Tier 0 — STABLE.  safe ±0.01% / alert→0.05% / danger→0.25% / cap 0.50%
     function _tierStable() private pure returns (SpryFeeParams memory) {
@@ -392,90 +533,5 @@ contract SpryHook is IHooks {
             safeFee:  10_000,   // 1.00%
             capFee:   99_000    // 9.90%
         });
-    }
-
-    // ---------------------------------------------------------------------
-    // IHooks — every other entry point is a pass-through. Permissioned to
-    // PoolManager only so they can never be called externally and cannot be
-    // used as a re-entry surface.
-    // ---------------------------------------------------------------------
-    function beforeInitialize(address, PoolKey calldata, uint160) external view onlyPoolManager returns (bytes4) {
-        return IHooks.beforeInitialize.selector;
-    }
-
-    function afterInitialize(address, PoolKey calldata, uint160, int24)
-        external
-        view
-        onlyPoolManager
-        returns (bytes4)
-    {
-        return IHooks.afterInitialize.selector;
-    }
-
-    function beforeAddLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
-        external
-        view
-        onlyPoolManager
-        returns (bytes4)
-    {
-        return IHooks.beforeAddLiquidity.selector;
-    }
-
-    function afterAddLiquidity(
-        address,
-        PoolKey calldata,
-        ModifyLiquidityParams calldata,
-        BalanceDelta,
-        BalanceDelta,
-        bytes calldata
-    ) external view onlyPoolManager returns (bytes4, BalanceDelta) {
-        return (IHooks.afterAddLiquidity.selector, BalanceDelta.wrap(0));
-    }
-
-    function beforeRemoveLiquidity(address, PoolKey calldata, ModifyLiquidityParams calldata, bytes calldata)
-        external
-        view
-        onlyPoolManager
-        returns (bytes4)
-    {
-        return IHooks.beforeRemoveLiquidity.selector;
-    }
-
-    function afterRemoveLiquidity(
-        address,
-        PoolKey calldata,
-        ModifyLiquidityParams calldata,
-        BalanceDelta,
-        BalanceDelta,
-        bytes calldata
-    ) external view onlyPoolManager returns (bytes4, BalanceDelta) {
-        return (IHooks.afterRemoveLiquidity.selector, BalanceDelta.wrap(0));
-    }
-
-    function afterSwap(address, PoolKey calldata, SwapParams calldata, BalanceDelta, bytes calldata)
-        external
-        view
-        onlyPoolManager
-        returns (bytes4, int128)
-    {
-        return (IHooks.afterSwap.selector, 0);
-    }
-
-    function beforeDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
-        external
-        view
-        onlyPoolManager
-        returns (bytes4)
-    {
-        return IHooks.beforeDonate.selector;
-    }
-
-    function afterDonate(address, PoolKey calldata, uint256, uint256, bytes calldata)
-        external
-        view
-        onlyPoolManager
-        returns (bytes4)
-    {
-        return IHooks.afterDonate.selector;
     }
 }
