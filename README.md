@@ -165,6 +165,32 @@ entire price range. Under that constraint the swap math reduces to the
 constant-product `x · y = k` at the current price, the regime the
 SmartFee derivation operates on.
 
+## Scripts
+
+All scripts read addresses and keys from `.env` (see `.env.example`). On Base
+Sepolia, run with `--rpc-url base_sepolia --broadcast`.
+
+- `script/DeploySpry.s.sol`: deploy SpryHook (salt-mined) and SpryRouter.
+- `script/SeedPool.s.sol`: deploy and mint two mock ERC20s, create a Spry pool,
+  and seed a full-range position. Optional env: `TICK_SPACING` (tier, default
+  60), `MINT_AMOUNT`, `LIQUIDITY`, `SQRT_PRICE_X96`.
+- `script/RemoveLiquidity.s.sol`: remove liquidity from a pool given
+  `TOKEN0`/`TOKEN1` and either `LIQUIDITY` (capped at your balance) or
+  `REMOVE_ALL=true`. Optional `TICK_SPACING` (default 60).
+- `script/SmartSwap.s.sol`: swap given only `TOKEN_IN`/`TOKEN_OUT`. It
+  auto-detects the pool tier and defaults the amount to your full `TOKEN_IN`
+  balance, routing through SpryRouter. Optional `AMOUNT_IN`, `TICK_SPACING`.
+
+The seed and remove scripts use the canonical V4 `PoolModifyLiquidityTest`
+router for liquidity (simple full-range testnet seeding); production LP goes
+through Uniswap's `PositionManager`. Example:
+
+```bash
+TOKEN0=0x.. TOKEN1=0x.. REMOVE_ALL=true \
+  forge script script/RemoveLiquidity.s.sol:RemoveLiquidity \
+    --rpc-url base_sepolia --broadcast
+```
+
 ## Deployments
 
 ### Base Sepolia (chain id 84532)
