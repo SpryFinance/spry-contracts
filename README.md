@@ -181,7 +181,8 @@ Deployed with `BLOCK_WINDOW = 30` against the canonical Uniswap V4 contracts
 on Base Sepolia: PoolManager `0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408`,
 PositionManager `0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80`, Permit2
 `0x000000000022D473030F116dDEE9F6B43aC78BA3`. The hook address ends in
-`0080`, encoding the required `BEFORE_SWAP` permission flag.
+`0080`, encoding the required `BEFORE_SWAP` permission flag. Deploy block
+(subgraph `startBlock`): `42508548`.
 
 ## Status
 

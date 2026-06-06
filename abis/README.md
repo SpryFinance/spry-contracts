@@ -116,7 +116,7 @@ Verified against the pinned V4 core (see Provenance):
 - **Deployed on Base Sepolia (84532)**: `SPRY_HOOK_ADDRESS` =
   `0x43C99D40E2E7FBa44435bFC6Da57a74d38fD0080`, SpryRouter =
   `0xd4Af9FFDf2067d4CA422526D308E08CDBE690642`. No mainnet deployment yet.
-  For a subgraph `startBlock`, use the hook's deploy block on Base Sepolia.
+  Subgraph `startBlock`: `42508548` (the hook's deploy block).
 
 For lookups, the hook also exposes `poolWindow(bytes32)` and
 `tierParams(uint8)` as `view`/`pure`, usable from `eth_call` at
