@@ -165,6 +165,24 @@ entire price range. Under that constraint the swap math reduces to the
 constant-product `x · y = k` at the current price, the regime the
 SmartFee derivation operates on.
 
+## Deployments
+
+### Base Sepolia (chain id 84532)
+
+Testnet only, verified on BaseScan. Not audited; do not use with material
+funds.
+
+| Contract | Address |
+|----------|---------|
+| SpryHook | [`0x43C99D40E2E7FBa44435bFC6Da57a74d38fD0080`](https://sepolia.basescan.org/address/0x43C99D40E2E7FBa44435bFC6Da57a74d38fD0080) |
+| SpryRouter | [`0xd4Af9FFDf2067d4CA422526D308E08CDBE690642`](https://sepolia.basescan.org/address/0xd4Af9FFDf2067d4CA422526D308E08CDBE690642) |
+
+Deployed with `BLOCK_WINDOW = 30` against the canonical Uniswap V4 contracts
+on Base Sepolia: PoolManager `0x05E73354cFDd6745C338b50BcFDfA3Aa6fA03408`,
+PositionManager `0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80`, Permit2
+`0x000000000022D473030F116dDEE9F6B43aC78BA3`. The hook address ends in
+`0080`, encoding the required `BEFORE_SWAP` permission flag.
+
 ## Status
 
 - **264 unit + integration + scenario + invariant + fork tests
@@ -174,9 +192,9 @@ SmartFee derivation operates on.
   with zero violations.
 - **Not yet externally audited.** Do not deploy with material user
   funds until an independent audit is complete.
-- **No mainnet deployment.** Authoritative addresses, when they exist,
-  will be published in this README alongside the audit report and
-  deployment tag.
+- **No mainnet deployment.** A verified Base Sepolia testnet deployment is
+  live (see Deployments above). Mainnet addresses, when they exist, will be
+  published here alongside the audit report and deployment tag.
 
 ## License
 

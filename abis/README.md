@@ -76,6 +76,10 @@ fee == 0x800000                       // LPFeeLibrary.DYNAMIC_FEE_FLAG
 tickSpacing ∈ {1, 10, 60, 200, 1000}
 ```
 
+`SPRY_HOOK_ADDRESS` on Base Sepolia (84532) is
+`0x43C99D40E2E7FBa44435bFC6Da57a74d38fD0080` (SpryRouter:
+`0xd4Af9FFDf2067d4CA422526D308E08CDBE690642`).
+
 ### Tier table (immutable, safe to hardcode)
 
 `tickSpacing` selects the tier and its fee curve. The table is compile-time
@@ -109,8 +113,10 @@ Verified against the pinned V4 core (see Provenance):
 - **Single, immutable, non-upgradeable hook** (no proxy): hardcode the
   address per chain; a future breaking change would be a new contract at a
   new address. `BLOCK_WINDOW` is a per-chain `immutable`.
-- **Pre-deployment**: there is no mainnet/testnet `SPRY_HOOK_ADDRESS` or
-  start block yet; keep both templated until deploy.
+- **Deployed on Base Sepolia (84532)**: `SPRY_HOOK_ADDRESS` =
+  `0x43C99D40E2E7FBa44435bFC6Da57a74d38fD0080`, SpryRouter =
+  `0xd4Af9FFDf2067d4CA422526D308E08CDBE690642`. No mainnet deployment yet.
+  For a subgraph `startBlock`, use the hook's deploy block on Base Sepolia.
 
 For lookups, the hook also exposes `poolWindow(bytes32)` and
 `tierParams(uint8)` as `view`/`pure`, usable from `eth_call` at
