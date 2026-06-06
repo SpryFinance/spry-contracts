@@ -4,3 +4,4 @@ lcov.info
 broadcast/
 .env
 .env.*
+!.env.example

@@ -16,9 +16,11 @@ remappings = [
     "permit2/=lib/v4-periphery/lib/permit2/",
 ]
 
-# Lower-overhead profile for fast TDD on the V2 surface (no via_ir, no V4 deps)
-[profile.v2]
-via_ir = false
-remappings = ["@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/"]
+[rpc_endpoints]
+base_sepolia = "${BASE_SEPOLIA_RPC_URL}"
+
+[etherscan]
+# Base Sepolia (chain id 84532). Used by `forge script ... --verify`.
+base_sepolia = { key = "${BASESCAN_API_KEY}", chain = 84532 }
 
 # See more config options https://github.com/foundry-rs/foundry/blob/master/crates/config/README.md#all-options
