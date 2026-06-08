@@ -180,6 +180,8 @@ Sepolia, run with `--rpc-url base_sepolia --broadcast`.
 - `script/SmartSwap.s.sol`: swap given only `TOKEN_IN`/`TOKEN_OUT`. It
   auto-detects the pool tier and defaults the amount to your full `TOKEN_IN`
   balance, routing through SpryRouter. Optional `AMOUNT_IN`, `TICK_SPACING`.
+- `script/MintTokens.s.sol`: mint a `MintableERC20` (deployed by SeedPool) to
+  any address. Env: `TOKEN`, `TO`, optional `AMOUNT` (default 1e21).
 
 The seed and remove scripts use the canonical V4 `PoolModifyLiquidityTest`
 router for liquidity (simple full-range testnet seeding); production LP goes
