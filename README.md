@@ -185,6 +185,18 @@ Sepolia, run with `--rpc-url base_sepolia --broadcast`.
 - `script/RevokeApprovals.s.sol`: reset a token's ERC20 allowance to 0. Env:
   `TOKEN`; optional `SPENDER` (default: revokes SpryRouter and
   PoolModifyLiquidityTest).
+- `script/AddLiquidityTokens.s.sol`: create (if needed) and seed a token/token
+  pool from existing tokens. Env: `TOKEN0`, `TOKEN1`, `AMOUNT0`, `AMOUNT1`;
+  optional `TICK_SPACING`, `SQRT_PRICE_X96`.
+- `script/AddLiquidityETH.s.sol`: create (if needed) and seed an ETH/token pool
+  (native ETH is currency0). Env: `TOKEN`, `ETH_AMOUNT`, `TOKEN_AMOUNT`;
+  optional `TICK_SPACING`, `SQRT_PRICE_X96`.
+
+`AddLiquidity*` take existing token addresses (unlike `SeedPool`, which deploys
+its own mocks) and add a full-range position sized by the amounts you pass. For
+a new pool the initial price defaults to the amount ratio (override with
+`SQRT_PRICE_X96`). Positions use the same per-owner salt as `SeedPool`, so
+`RemoveLiquidity` can unwind them (pass `TOKEN0=0x0000...0000` for the ETH leg).
 
 The seed and remove scripts use the canonical V4 `PoolModifyLiquidityTest`
 router for liquidity (simple full-range testnet seeding); production LP goes
