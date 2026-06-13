@@ -167,8 +167,8 @@ SmartFee derivation operates on.
 
 ## Scripts
 
-All scripts read addresses and keys from `.env` (see `.env.example`). On Base
-Sepolia, run with `--rpc-url base_sepolia --broadcast`.
+All scripts read addresses and keys from `.env` (see `.env.example`). On
+Unichain Sepolia, run with `--rpc-url unichain_sepolia --broadcast`.
 
 - `script/DeploySpry.s.sol`: deploy SpryHook (salt-mined) and SpryRouter.
 - `script/SeedPool.s.sol`: deploy and mint two mock ERC20s, create a Spry pool,
@@ -205,10 +205,27 @@ through Uniswap's `PositionManager`. Example:
 ```bash
 TOKEN0=0x.. TOKEN1=0x.. REMOVE_ALL=true \
   forge script script/RemoveLiquidity.s.sol:RemoveLiquidity \
-    --rpc-url base_sepolia --broadcast
+    --rpc-url unichain_sepolia --broadcast
 ```
 
 ## Deployments
+
+### Unichain Sepolia (chain id 1301)
+
+Testnet only, verified on Uniscan. Not audited; do not use with material
+funds.
+
+| Contract | Address |
+|----------|---------|
+| SpryHook | [`0x68ba5F1A761253c7c169F3Fde5b715c027814080`](https://sepolia.uniscan.xyz/address/0x68ba5F1A761253c7c169F3Fde5b715c027814080) |
+| SpryRouter | [`0xd887e2d555f98CB76AE3d0755Af7DdDC503EF017`](https://sepolia.uniscan.xyz/address/0xd887e2d555f98CB76AE3d0755Af7DdDC503EF017) |
+
+Deployed with `BLOCK_WINDOW = 60` against the canonical Uniswap V4 contracts
+on Unichain Sepolia: PoolManager `0x00b036b58a818b1bc34d502d3fe730db729e62ac`,
+PositionManager `0xf969aee60879c54baaed9f3ed26147db216fd664`, Permit2
+`0x000000000022D473030F116dDEE9F6B43aC78BA3`. The hook address's low 14 bits
+equal `0x0080` (it ends in `4080`), encoding the required `BEFORE_SWAP`
+permission flag. Deploy block (subgraph `startBlock`): `54497329`.
 
 ### Base Sepolia (chain id 84532)
 
@@ -236,9 +253,10 @@ PositionManager `0x4b2c77d209d3405f41a037ec6c77f7f5b8e2ca80`, Permit2
   with zero violations.
 - **Not yet externally audited.** Do not deploy with material user
   funds until an independent audit is complete.
-- **No mainnet deployment.** A verified Base Sepolia testnet deployment is
-  live (see Deployments above). Mainnet addresses, when they exist, will be
-  published here alongside the audit report and deployment tag.
+- **No mainnet deployment.** Verified Unichain Sepolia and Base Sepolia
+  testnet deployments are live (see Deployments above). Mainnet addresses,
+  when they exist, will be published here alongside the audit report and
+  deployment tag.
 
 ## License
 

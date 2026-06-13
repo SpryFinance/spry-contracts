@@ -44,7 +44,7 @@ interface ISpryRouter {
 ///
 /// Example:
 ///   TOKEN_IN=0x.. TOKEN_OUT=0x.. \
-///     forge script script/SmartSwap.s.sol:SmartSwap --rpc-url base_sepolia --broadcast
+///     forge script script/SmartSwap.s.sol:SmartSwap --rpc-url unichain_sepolia --broadcast
 contract SmartSwap is Script {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

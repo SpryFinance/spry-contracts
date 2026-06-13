@@ -47,7 +47,7 @@ interface IModifyLiquidityRouter {
 ///
 /// Example:
 ///   TOKEN=0x.. ETH_AMOUNT=100000000000000000 TOKEN_AMOUNT=1000000000000000000000 \
-///     forge script script/AddLiquidityETH.s.sol:AddLiquidityETH --rpc-url base_sepolia --broadcast
+///     forge script script/AddLiquidityETH.s.sol:AddLiquidityETH --rpc-url unichain_sepolia --broadcast
 contract AddLiquidityETH is Script {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

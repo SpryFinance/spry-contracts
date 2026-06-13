@@ -23,7 +23,7 @@ interface IMintableERC20 {
 ///
 /// Example:
 ///   TOKEN=0x.. TO=0x.. AMOUNT=1000000000000000000000 \
-///     forge script script/MintTokens.s.sol:MintTokens --rpc-url base_sepolia --broadcast
+///     forge script script/MintTokens.s.sol:MintTokens --rpc-url unichain_sepolia --broadcast
 contract MintTokens is Script {
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");

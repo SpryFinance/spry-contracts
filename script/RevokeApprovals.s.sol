@@ -24,7 +24,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 ///
 /// Example:
 ///   TOKEN=0x.. forge script script/RevokeApprovals.s.sol:RevokeApprovals \
-///     --rpc-url base_sepolia --broadcast
+///     --rpc-url unichain_sepolia --broadcast
 contract RevokeApprovals is Script {
     function run() external {
         uint256 pk = vm.envUint("PRIVATE_KEY");

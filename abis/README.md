@@ -76,7 +76,9 @@ fee == 0x800000                       // LPFeeLibrary.DYNAMIC_FEE_FLAG
 tickSpacing ∈ {1, 10, 60, 200, 1000}
 ```
 
-`SPRY_HOOK_ADDRESS` on Base Sepolia (84532) is
+`SPRY_HOOK_ADDRESS` on Unichain Sepolia (1301) is
+`0x68ba5F1A761253c7c169F3Fde5b715c027814080` (SpryRouter:
+`0xd887e2d555f98CB76AE3d0755Af7DdDC503EF017`). On Base Sepolia (84532) it is
 `0x43C99D40E2E7FBa44435bFC6Da57a74d38fD0080` (SpryRouter:
 `0xd4Af9FFDf2067d4CA422526D308E08CDBE690642`).
 
@@ -113,10 +115,15 @@ Verified against the pinned V4 core (see Provenance):
 - **Single, immutable, non-upgradeable hook** (no proxy): hardcode the
   address per chain; a future breaking change would be a new contract at a
   new address. `BLOCK_WINDOW` is a per-chain `immutable`.
+- **Deployed on Unichain Sepolia (1301)**: `SPRY_HOOK_ADDRESS` =
+  `0x68ba5F1A761253c7c169F3Fde5b715c027814080`, SpryRouter =
+  `0xd887e2d555f98CB76AE3d0755Af7DdDC503EF017`, `BLOCK_WINDOW` = 60.
+  Subgraph `startBlock`: `54497329` (the hook's deploy block).
 - **Deployed on Base Sepolia (84532)**: `SPRY_HOOK_ADDRESS` =
   `0x43C99D40E2E7FBa44435bFC6Da57a74d38fD0080`, SpryRouter =
-  `0xd4Af9FFDf2067d4CA422526D308E08CDBE690642`. No mainnet deployment yet.
-  Subgraph `startBlock`: `42508548` (the hook's deploy block).
+  `0xd4Af9FFDf2067d4CA422526D308E08CDBE690642`, `BLOCK_WINDOW` = 30.
+  Subgraph `startBlock`: `42508548` (the hook's deploy block). No mainnet
+  deployment yet.
 
 For lookups, the hook also exposes `poolWindow(bytes32)` and
 `tierParams(uint8)` as `view`/`pure`, usable from `eth_call` at

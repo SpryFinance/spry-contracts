@@ -43,7 +43,7 @@ interface IModifyLiquidityRouter {
 ///
 /// Example:
 ///   forge script script/SeedPool.s.sol:SeedPool \
-///     --rpc-url base_sepolia --broadcast
+///     --rpc-url unichain_sepolia --broadcast
 contract SeedPool is Script {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;

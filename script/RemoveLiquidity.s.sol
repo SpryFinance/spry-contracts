@@ -42,7 +42,7 @@ interface IModifyLiquidityRouter {
 /// Example (remove everything):
 ///   TOKEN0=0x.. TOKEN1=0x.. REMOVE_ALL=true \
 ///     forge script script/RemoveLiquidity.s.sol:RemoveLiquidity \
-///       --rpc-url base_sepolia --broadcast
+///       --rpc-url unichain_sepolia --broadcast
 contract RemoveLiquidity is Script {
     using PoolIdLibrary for PoolKey;
     using StateLibrary for IPoolManager;
